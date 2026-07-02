@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verdade ou Blefe · Itaú</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <button class="voltar" id="btnVoltar" style="display:none;" onclick="irPara('home')">←</button>
+    <div>
+      <h1 id="tituloTopo">Plenária SPOD</h1>
+      <div class="sub" id="subTopo">Itaú Unibanco</div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- HOME -->
+    <section class="screen ativo" id="tela-home">
+      <div class="hero">
+        <div class="badge">🔮</div>
+        <h2>2 Mentiras 1 Verdade</h2>
+        <p>Formem os grupos e sentem-se próximos. Cada pessoa vai contar 3 afirmações — 2 mentiras e 1 verdade — e o grupo tenta descobrir qual é a afirmação verdadeira.</p>
+      </div>
+      <div class="menu">
+        <button class="menu-item" onclick="irPara('cadastro')">
+          <div class="icone">📝</div>
+          <div class="txt"><strong>1. Cadastrar meu grupo</strong><span>Registre o nome de todos do grupo</span></div>
+        </button>
+        <button class="menu-item" onclick="irPara('jogar-selecionar')">
+          <div class="icone">🎯</div>
+          <div class="txt"><strong>2. Jogar a dinâmica</strong><span>Registrar quem acertou e quem errou</span></div>
+        </button>
+        <button class="menu-item" onclick="irPara('resultado-selecionar')">
+          <div class="icone">🏆</div>
+          <div class="txt"><strong>3. Resultado do meu grupo</strong><span>Ver o ranking do seu grupo</span></div>
+        </button>
+        <button class="menu-item" onclick="abrirPainel()">
+          <div class="icone">📊</div>
+          <div class="txt"><strong>4. Painel geral</strong><span>Resultado de todos os grupos (telão)</span></div>
+        </button>
+      </div>
+      <div class="rodape-nota">Cada grupo usa apenas 1 celular durante o jogo.</div>
+    </section>
+
+    <!-- CADASTRO -->
+    <section class="screen" id="tela-cadastro">
+      <label>Número do grupo</label>
+      <input type="number" id="cadGrupoNum" min="1" max="30" placeholder="Ex: 1" onchange="carregarCadastroExistente()">
+
+      <div id="cadCampos" style="margin-top:14px;"></div>
+
+      <button class="btn secundario" onclick="adicionarCampoNome()">+ Adicionar pessoa</button>
+      <button class="btn" onclick="salvarGrupo()">Salvar grupo</button>
+      <div id="cadStatus"></div>
+      <button class="btn" onclick="irPara('jogar-selecionar')">Começar a jogar 🎮</button>
+    </section>
+
+    <!-- SELECIONAR GRUPO PARA JOGAR -->
+    <section class="screen" id="tela-jogar-selecionar">
+      <div class="cartao">
+        <label>Qual o número do seu grupo?</label>
+        <input type="number" id="jogarGrupoNum" min="1" max="30" placeholder="Ex: 1">
+        <button class="btn" onclick="iniciarJogo()">Começar a jogar 🎮</button>
+        <div id="jogarSelecionarErro"></div>
+      </div>
+      <div class="aviso">Só é possível jogar depois de cadastrar os nomes do grupo na etapa 1.</div>
+    </section>
+
+    <!-- JOGO -->
+    <section class="screen" id="tela-jogo">
+      <div class="progresso-wrap">
+        <span id="jogoProgressoTxt">Apresentador 1 de 10</span>
+        <span id="jogoGrupoTxt">Grupo 1</span>
+      </div>
+      <div class="barra"><div id="jogoBarra" style="width:0%"></div></div>
+
+      <div class="spotlight">
+        <div class="eyebrow">Entregue o celular para</div>
+        <div class="nome" id="jogoApresentador">—</div>
+        <div class="instrucao">Fale 3 afirmações (2 mentiras + 1 verdade). Marque abaixo se cada colega acertou a verdade.</div>
+        <div class="instrucao2">Não conte a resposta certa até que todos do grupo respondam.</div>
+      </div>
+
+      <div id="jogoOuvintes"></div>
+
+      <button class="btn" id="btnProximoApresentador" onclick="proximoApresentador()" disabled>Próximo apresentador</button>
+    </section>
+
+    <!-- RESULTADO DE UM GRUPO (SELEÇÃO) -->
+    <section class="screen" id="tela-resultado-selecionar">
+      <div class="cartao">
+        <label>Número do grupo</label>
+        <input type="number" id="resGrupoNum" min="1" max="30" placeholder="Ex: 1">
+        <button class="btn" onclick="verResultadoGrupo()">Ver resultado</button>
+        <div id="resSelecionarErro"></div>
+      </div>
+    </section>
+
+    <!-- RESULTADO DE UM GRUPO -->
+    <section class="screen" id="tela-resultado-grupo">
+      <div id="resGrupoConteudo"></div>
+      <button class="btn secundario" onclick="irPara('home')">Voltar ao início</button>
+      <button class="btn secundario" onclick="abrirPainel()">Resultado Geral🎖️</button>
+    </section>
+
+    <!-- PAINEL GERAL -->
+    <section class="screen" id="tela-painel">
+      <div id="painelConteudo"><div class="spinner"></div></div>
+      <button class="btn secundario" onclick="abrirPainel()">🔄 Atualizar painel</button>
+    </section>
+
+  </main>
+</div>
+
+<!-- Biblioteca cliente do Supabase (carregada via CDN) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
+</body>
+</html>
