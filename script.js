@@ -62,12 +62,12 @@ function irPara(tela){
   document.getElementById('tela-'+tela).classList.add('ativo');
   const titulos = {
     'home': ['Plenária SPOD','· Itaú · '],
-    'cadastro': ['Cadastrar grupo','Digite o nome e sobrenome de todos'],
-    'jogar-selecionar': ['Jogar dinâmica','Escolha o número do grupo'],
+    'cadastro': ['Cadastrar meus pilotos','Digite o nome e sobrenome de todos'],
+    'jogar-selecionar': ['Ligue os Motores','Escolha o número do grupo'],
     'jogo': ['Rodada em andamento','Marque acertou / errou'],
-    'resultado-selecionar': ['Resultado do grupo','Escolha o número do grupo'],
-    'resultado-grupo': ['Resultado do grupo','Ranking de acertos e erros'],
-    'painel': ['Painel geral','Todos os grupos · tempo real']
+    'resultado-selecionar': ['Pódio do Grupo','Escolha o número do grupo'],
+    'resultado-grupo': ['Pódio do Grupo','Ranking de acertos e erros'],
+    'painel': ['Pódio SPOD 🥇🥈🥉','Todos os grupos · tempo real']
   };
   document.getElementById('tituloTopo').textContent = titulos[tela][0];
   document.getElementById('subTopo').textContent = titulos[tela][1];
