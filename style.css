@@ -57,6 +57,12 @@ header.topbar{
 }
 .topbar h1{font-size:17px; font-weight:700; line-height:1.2;}
 .topbar .sub{font-size:12px; opacity:0.85; margin-top:2px;}
+.topbar .logo-topbar{
+  height:34px;
+  width:auto;
+  margin-left:auto;
+  flex-shrink:0;
+}
 main{
   flex:1;
   padding:20px;
