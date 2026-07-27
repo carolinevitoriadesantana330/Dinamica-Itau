@@ -21,6 +21,7 @@ body{
   background:var(--creme);
   color:var(--tinta);
   min-height:100vh;
+  overflow-x:hidden;
   -webkit-tap-highlight-color: transparent;
 }
 h1,h2,h3{font-family:'Poppins',sans-serif; margin:0;}
@@ -352,11 +353,13 @@ select{
   display:flex;
   align-items:flex-end;
   justify-content:center;
-  gap:8px;
-  padding:20px 14px 0;
+  gap:6px;
+  padding:20px 8px 0;
+  width:100%;
 }
 .podio-coluna{
-  flex:1;
+  flex:1 1 0;
+  min-width:0; /* essencial: sem isso o item flex nunca encolhe abaixo do conteúdo e vaza da tela */
   display:flex;
   flex-direction:column;
   align-items:center;
@@ -370,11 +373,19 @@ select{
   color:var(--tinta);
   line-height:1.25;
   margin-bottom:2px;
+  width:100%;
+  overflow-wrap:break-word;
+  word-break:break-word;
+  hyphens:auto;
 }
 .podio-valor{
   font-size:12px;
   color:var(--tinta-suave);
   margin-bottom:8px;
+  width:100%;
+  text-align:center;
+  overflow-wrap:break-word;
+  word-break:break-word;
 }
 .podio-degrau{
   width:100%;
@@ -447,4 +458,14 @@ select{
   padding:4px 10px;
   border-radius:20px;
   white-space:nowrap;
+}
+
+/* Telas bem estreitas (a maioria dos Android comuns, ~360-390px): aperta ainda mais
+   as colunas do pódio para garantir que nada vaze para fora da tela. */
+@media (max-width:400px){
+  .podio-colunas{ gap:4px; padding:18px 4px 0; }
+  .podio-coluna{ max-width:112px; }
+  .podio-medalha{ font-size:24px; }
+  .podio-nome{ font-size:12.5px; }
+  .podio-valor{ font-size:11px; }
 }
