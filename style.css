@@ -298,3 +298,120 @@ select{
   animation:girar 0.8s linear infinite; margin:20px auto;
 }
 @keyframes girar{to{transform:rotate(360deg);}}
+
+/* ---------------- CRONÔMETRO ---------------- */
+.cronometro-wrap{
+  text-align:center;
+  margin-bottom:6px;
+}
+#jogoCronometro{
+  display:inline-block;
+  font-family:'Poppins',sans-serif;
+  font-weight:800;
+  font-size:22px;
+  color:var(--azul-escuro);
+  background:#EEF1FF;
+  border-radius:12px;
+  padding:6px 18px;
+  letter-spacing:0.5px;
+}
+#jogoCronometro.cronometro-alerta{
+  color:#fff;
+  background:var(--vermelho);
+  animation:pulsar 1s ease infinite;
+}
+@keyframes pulsar{
+  0%,100%{transform:scale(1);}
+  50%{transform:scale(1.06);}
+}
+
+/* ---------------- PAINEL DO ADMINISTRADOR ---------------- */
+.admin-largada{
+  border-color:var(--azul-claro);
+  background:#F5F7FF;
+  margin-bottom:20px;
+}
+
+/* ---------------- PÓDIO QUADRICULADO (BANDEIRA F1) ---------------- */
+.podio-quadriculado{
+  margin:14px 0 22px;
+  border-radius:16px;
+  overflow:hidden;
+  background:#fff;
+  border:1.5px solid #F0E4D8;
+}
+.podio-bandeira{
+  height:14px;
+  background-image:
+    linear-gradient(45deg, #111 25%, transparent 25%, transparent 75%, #111 75%, #111),
+    linear-gradient(45deg, #111 25%, #fff 25%, #fff 75%, #111 75%, #111);
+  background-size:16px 16px;
+  background-position:0 0, 8px 8px;
+}
+.podio-colunas{
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  gap:8px;
+  padding:20px 14px 0;
+}
+.podio-coluna{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  max-width:130px;
+}
+.podio-medalha{font-size:28px; margin-bottom:2px;}
+.podio-nome{
+  font-weight:700;
+  font-size:13.5px;
+  text-align:center;
+  color:var(--tinta);
+  line-height:1.25;
+  margin-bottom:2px;
+}
+.podio-valor{
+  font-size:12px;
+  color:var(--tinta-suave);
+  margin-bottom:8px;
+}
+.podio-degrau{
+  width:100%;
+  border-radius:8px 8px 0 0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-family:'Poppins',sans-serif;
+  font-weight:800;
+  color:#fff;
+  font-size:15px;
+}
+.podio-degrau.primeiro{height:76px; background:linear-gradient(180deg, var(--laranja) 0%, var(--laranja-escuro) 100%);}
+.podio-degrau.segundo{height:54px; background:linear-gradient(180deg, #6B7280 0%, #4B5563 100%);}
+.podio-degrau.terceiro{height:38px; background:linear-gradient(180deg, #C97B3C 0%, #A85D28 100%);}
+
+/* Empates no pódio: nomes em chips com rolagem horizontal, nunca empilhados na vertical */
+.podio-nomes-scroll{
+  display:flex;
+  gap:6px;
+  max-width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+  padding:2px 2px 6px;
+  margin-bottom:2px;
+  scrollbar-width:thin;
+}
+.podio-nomes-scroll::-webkit-scrollbar{height:5px;}
+.podio-nomes-scroll::-webkit-scrollbar-thumb{background:#E8DBCC; border-radius:6px;}
+.podio-chip{
+  flex-shrink:0;
+  background:#FFF3E6;
+  border:1px solid #FFD9AD;
+  color:var(--tinta);
+  font-size:12px;
+  font-weight:700;
+  padding:4px 10px;
+  border-radius:20px;
+  white-space:nowrap;
+}
