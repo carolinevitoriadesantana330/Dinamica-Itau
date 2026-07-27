@@ -83,24 +83,26 @@ const storage = {
 };
 
 /* ============================================================
-   ACESSO DE ADMINISTRADOR (para esconder o botão "Dar largada")
-   Troque 'itau-spod-2026' por um código só seu antes do evento.
-   Para virar admin no SEU celular/notebook, abra o app UMA vez com:
-     https://SEU-LINK/index.html?admin=itau-spod-2026
-   Depois disso o app lembra (localStorage) e o botão de largada
-   só aparece nesse aparelho. Ninguém mais verá esse botão.
+   ACESSO DE ADMINISTRADOR (botão flutuante "Admin", canto inferior direito)
+   A senha NÃO fica neste arquivo — fica guardada com hash no Supabase
+   (tabela admin_config) e é verificada pela função verificar_senha_admin,
+   que só devolve true/false, nunca a senha em si.
+   Ao tocar no botão "Admin" pela primeira vez, o app pede a senha.
+   Acertando, ele lembra (localStorage) nesse aparelho e não pergunta
+   de novo. Em qualquer outro aparelho, sem a senha, os botões de
+   largada/resetar nunca aparecem.
 ============================================================ */
-const CODIGO_ADMIN = 'itau-spod-2026';
 function souAdmin(){
   try{
-    const params = new URLSearchParams(window.location.search);
-    if(params.get('admin') === CODIGO_ADMIN){
-      localStorage.setItem('spod_admin', '1');
-    }
     return localStorage.getItem('spod_admin') === '1';
   }catch(e){
-    return false; // se localStorage falhar (modo privado etc.), nunca mostra o botão por padrão
+    return false; // se localStorage falhar (modo privado etc.), nunca mostra os controles por padrão
   }
+}
+function sairDoModoAdmin(){
+  try{ localStorage.removeItem('spod_admin'); }catch(e){}
+  document.getElementById('adminFloatPanel').style.display = 'none';
+  atualizarBotaoAdminFloat();
 }
 
 /* ============================================================
@@ -114,6 +116,65 @@ function escaparHtml(txt){
   const div = document.createElement('div');
   div.textContent = String(txt);
   return div.innerHTML;
+}
+
+/* ============================================================
+   BOTÃO FLUTUANTE "ADMIN" (canto inferior direito, em qualquer tela)
+============================================================ */
+function atualizarBotaoAdminFloat(){
+  const btn = document.getElementById('btnAdminFloat');
+  if(!btn) return;
+  btn.textContent = souAdmin() ? '🔓 Admin' : '🔒 Admin';
+}
+
+async function toggleAdminFloat(){
+  const painel = document.getElementById('adminFloatPanel');
+  if(!souAdmin()){
+    const senha = prompt('Senha de administrador:');
+    if(senha === null) return; // cancelou
+    let senhaCorreta = false;
+    try{
+      const { data, error } = await comRetry(() => supabaseClient.rpc('verificar_senha_admin', { senha_tentativa: senha }));
+      if(error) throw error;
+      senhaCorreta = data === true;
+    }catch(e){
+      alert('Não consegui checar a senha agora. Verifique a internet e tente de novo.');
+      return;
+    }
+    if(!senhaCorreta){
+      alert('Senha incorreta.');
+      return;
+    }
+    try{ localStorage.setItem('spod_admin', '1'); }catch(e){}
+    atualizarBotaoAdminFloat();
+  }
+  const abrindo = painel.style.display === 'none' || !painel.style.display;
+  painel.style.display = abrindo ? 'block' : 'none';
+  if(abrindo) await renderAdminFloatPanel();
+}
+
+async function renderAdminFloatPanel(){
+  const painel = document.getElementById('adminFloatPanel');
+  painel.innerHTML = '<div class="spinner" style="margin:14px auto;"></div>';
+  try{
+    const estado = await lerEstadoJogo();
+    const lista = await storage.list('grupo:');
+    const chaves = (lista && lista.keys) ? lista.keys : [];
+    const totalGruposCadastrados = chaves.filter(k => k.endsWith(':membros')).length;
+
+    painel.innerHTML = `
+      <p style="font-size:12.5px;color:var(--tinta-suave);margin:0 0 10px;">
+        ${totalGruposCadastrados} de ${MAX_GRUPOS} grupos cadastraram pilotos.
+      </p>
+      ${estado.iniciado
+        ? '<div class="aviso" style="font-size:12px;padding:8px 10px;">🏁 Largada dada!</div><button class="btn secundario" style="margin-top:8px;" id="btnResetarFloat" onclick="resetarLargada()">↺ Resetar largada</button>'
+        : '<button class="btn" style="margin-top:0;" id="btnLargada" onclick="darLargada()">🏁 Dar a largada geral</button>'
+      }
+      <button class="btn fantasma" style="margin-top:8px;padding:8px;font-size:12px;" onclick="sairDoModoAdmin()">Sair do modo admin</button>
+    `;
+  }catch(e){
+    painel.innerHTML = '<div class="aviso" style="font-size:12px;">Erro ao carregar. Feche e abra o painel de novo.</div>';
+  }
 }
 
 /* ============================================================
@@ -275,14 +336,14 @@ async function darLargada(){
   }catch(e){
     alert('Não consegui dar a largada agora. Tente novamente.');
   }
-  await abrirPainel();
+  await renderAdminFloatPanel();
 }
 async function resetarLargada(){
   if(!confirm('Isso vai travar TODOS os grupos de volta na tela de espera, mesmo quem já está jogando. Tem certeza?')) return;
   try{
     await storage.set('jogo:estado', JSON.stringify({ iniciado:false, ts: Date.now() }));
   }catch(e){}
-  await abrirPainel();
+  await renderAdminFloatPanel();
 }
 
 let esperaLargadaId = null;
@@ -633,33 +694,12 @@ async function abrirPainel(_silencioso){
   const conteudo = document.getElementById('painelConteudo');
   if(!_silencioso) conteudo.innerHTML = '<div class="spinner"></div>';
   try{
-    const estado = await lerEstadoJogo();
     const lista = await storage.list('grupo:');
     const chaves = (lista && lista.keys) ? lista.keys : [];
-    const chavesMembros = chaves.filter(k => k.endsWith(':membros'));
     const chavesResultado = chaves.filter(k => k.endsWith(':resultado'));
-    const totalGruposCadastrados = chavesMembros.length;
-
-    // ---- Painel do admin: contador de grupos + botão de largada ----
-    // Só é montado (e só existe no HTML) se este aparelho tiver o carimbo de admin.
-    let htmlAdmin = '';
-    if(souAdmin()){
-      htmlAdmin = `
-        <div class="cartao admin-largada">
-          <div class="secao-titulo" style="margin-top:0;">🎛️ Controle do administrador</div>
-          <p style="font-size:13.5px;color:var(--tinta-suave);margin:0 0 12px;">
-            ${totalGruposCadastrados} de ${MAX_GRUPOS} grupos já cadastraram pilotos.
-          </p>
-          ${estado.iniciado
-            ? '<div class="aviso">🏁 Largada dada! Os grupos já podem jogar, cada apresentador com 1 minuto no cronômetro.</div><button class="btn secundario" onclick="resetarLargada()">↺ Resetar largada (nova rodada)</button>'
-            : '<button class="btn" id="btnLargada" onclick="darLargada()">🏁 Dar a largada geral</button>'
-          }
-        </div>
-      `;
-    }
 
     if(chavesResultado.length === 0){
-      conteudo.innerHTML = htmlAdmin + '<div class="vazio">Nenhum grupo finalizou a dinâmica ainda.<br>Assim que os grupos terminarem, os resultados aparecem aqui.</div>';
+      conteudo.innerHTML = '<div class="vazio">Nenhum grupo finalizou a dinâmica ainda.<br>Assim que os grupos terminarem, os resultados aparecem aqui.</div>';
       return;
     }
 
@@ -703,7 +743,7 @@ async function abrirPainel(_silencioso){
     // se houver empate, todo mundo daquela % sobe junto no mesmo degrau.
     const ranksIndividual = agruparPorEmpate(pessoas).slice(0,3);
 
-    let html = htmlAdmin;
+    let html = '';
 
     html += `
       <div class="secao-titulo">🏆 Pódio individual </div>
@@ -730,3 +770,4 @@ async function abrirPainel(_silencioso){
 }
 
 inicializarCadastro();
+atualizarBotaoAdminFloat();
