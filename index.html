@@ -127,6 +127,12 @@
   </main>
 </div>
 
+<!-- BOTÃO FLUTUANTE ADMIN — visível em qualquer tela, só funciona com a senha -->
+<div id="adminFloatWrap" class="admin-float-wrap">
+  <div id="adminFloatPanel" class="admin-float-panel" style="display:none;"></div>
+  <button id="btnAdminFloat" class="admin-float-btn" onclick="toggleAdminFloat()">🔒 Admin</button>
+</div>
+
 <!-- Biblioteca cliente do Supabase (carregada via CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="script.js"></script>
