@@ -387,6 +387,39 @@ select{
   color:#fff;
   font-size:15px;
 }
+/* ---------------- BOTÃO FLUTUANTE ADMIN ---------------- */
+.admin-float-wrap{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:999;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:10px;
+}
+.admin-float-btn{
+  background:var(--tinta);
+  color:#fff;
+  border:none;
+  padding:11px 16px;
+  border-radius:30px;
+  font-size:13px;
+  font-weight:700;
+  font-family:'Inter',sans-serif;
+  cursor:pointer;
+  box-shadow:var(--sombra);
+}
+.admin-float-btn:active{transform:scale(0.97);}
+.admin-float-panel{
+  background:#fff;
+  border:1.5px solid #F0E4D8;
+  border-radius:16px;
+  padding:14px;
+  width:230px;
+  box-shadow:var(--sombra);
+}
+
 .podio-degrau.primeiro{height:76px; background:linear-gradient(180deg, var(--laranja) 0%, var(--laranja-escuro) 100%);}
 .podio-degrau.segundo{height:54px; background:linear-gradient(180deg, #6B7280 0%, #4B5563 100%);}
 .podio-degrau.terceiro{height:38px; background:linear-gradient(180deg, #C97B3C 0%, #A85D28 100%);}
