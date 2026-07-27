@@ -53,12 +53,15 @@
 
     <!-- CADASTRO -->
     <section class="screen" id="tela-cadastro">
-      <label>Número do grupo</label>
-      <input type="number" id="cadGrupoNum" min="1" max="30" placeholder="Ex: 1" onchange="carregarCadastroExistente()">
+      <label>Qual o número do seu grupo?</label>
+       <label>(Está no papel entregue na recepção da Plenária)</label>
+      <input type="number" id="cadGrupoNum" min="1" max="20" placeholder="Ex: 1" onchange="carregarCadastroExistente()">
+
+      <div class="aviso">Use nome sobrenome de cada piloto (ex: "Ana Pereira"). Até 10 pessoas por grupo</div>
 
       <div id="cadCampos" style="margin-top:14px;"></div>
 
-      <button class="btn secundario" onclick="adicionarCampoNome()">+ Adicionar pessoa</button>
+      <button class="btn secundario" id="btnAdicionarPessoa" onclick="adicionarCampoNome()">+ Adicionar pessoa</button>
       <button class="btn" onclick="salvarGrupo()">Salvar grupo</button>
       <div id="cadStatus"></div>
       <button class="btn" onclick="irPara('jogar-selecionar')">Começar a jogar 🎮</button>
@@ -68,11 +71,11 @@
     <section class="screen" id="tela-jogar-selecionar">
       <div class="cartao">
         <label>Qual o número do seu grupo?</label>
-        <input type="number" id="jogarGrupoNum" min="1" max="30" placeholder="Ex: 1">
+        <input type="number" id="jogarGrupoNum" min="1" max="20" placeholder="Ex: 1">
         <button class="btn" onclick="iniciarJogo()">Começar a jogar 🎮</button>
         <div id="jogarSelecionarErro"></div>
       </div>
-      <div class="aviso">Só é possível jogar depois de cadastrar os nomes do grupo na etapa 1.</div>
+      <div class="aviso">Só é possível jogar depois de cadastrar os nomes do grupo na etapa 1 <strong>e</strong> depois que o administrador der a largada geral no Pódio SPOD. Cada apresentador tem 1 minuto no cronômetro.</div>
     </section>
 
     <!-- JOGO -->
@@ -82,6 +85,9 @@
         <span id="jogoGrupoTxt">Grupo 1</span>
       </div>
       <div class="barra"><div id="jogoBarra" style="width:0%"></div></div>
+      <div class="cronometro-wrap">
+        <span id="jogoCronometro">⏱️ 1:00</span>
+      </div>
 
       <div class="spotlight">
         <div class="eyebrow">Entregue o celular para</div>
@@ -99,7 +105,7 @@
     <section class="screen" id="tela-resultado-selecionar">
       <div class="cartao">
         <label>Número do grupo</label>
-        <input type="number" id="resGrupoNum" min="1" max="30" placeholder="Ex: 1">
+        <input type="number" id="resGrupoNum" min="1" max="20" placeholder="Ex: 1">
         <button class="btn" onclick="verResultadoGrupo()">Ver resultado</button>
         <div id="resSelecionarErro"></div>
       </div>
