@@ -14,7 +14,7 @@
   <header class="topbar">
     <button class="voltar" id="btnVoltar" style="display:none;" onclick="irPara('home')">←</button>
     <div>
-      <h1 id="tituloTopo">🏁 GP do Conhecimento</h1>
+      <h1 id="tituloTopo">🏁 Pit Stop SPOD</h1>
       <div class="sub" id="subTopo">Plenária SPOD · Itaú Unibanco</div>
     </div>
     <img src="logo_itau.png" alt="Logo Itaú" class="logo-topbar">
@@ -28,13 +28,13 @@
     <section class="screen ativo" id="tela-home">
       <div class="hero">
         <div class="badge">🏎️💨</div>
-        <h2>Grand Prix do Conhecimento</h2>
-        <p>10 perguntas sobre o Itaú. Quem responde <strong>certo</strong> e <strong>rápido</strong> sobe mais no pódio.</p>
-        <p class="hero-dica">📱 A pergunta aparece completa no seu celular. O telão mostra a mesma pergunta pra todo mundo acompanhar junto.</p>
+        <h2>Pit Stop SPOD</h2>
+        <p>10 perguntas sobre o Itaú.<p>
+        <p>Quem responde <strong>certo</strong> e <strong>rápido</strong> sobe mais no pódio.</p>
       </div>
       <div class="menu">
         <button class="menu-item destaque" onclick="irPara('entrar')">
-          <div class="icone">🏎️</div>
+          <div class="icone">🚥</div>
           <div class="txt"><strong>Entrar na corrida</strong><span>Digite seu nome e prepare os motores</span></div>
         </button>
       </div>
@@ -46,7 +46,7 @@
          ============================================================ -->
     <section class="screen" id="tela-entrar">
       <div class="cartao">
-        <label for="nomeJogador">Qual o seu nome?</label>
+        <label for="nomeJogador">Digite seu nome completo</label>
         <input type="text" id="nomeJogador" maxlength="40" placeholder="Ex: Ana Pereira" autocomplete="off">
         <button class="btn" onclick="entrarComoJogador()">Ligar os motores 🏁</button>
         <div id="entrarStatus"></div>
@@ -83,7 +83,7 @@
         <!-- botões A/B/C/D são inseridos aqui via script.js -->
       </div>
 
-      <div id="pgAvisoRespondido" class="aviso-respondido" style="display:none;">✅ Resposta registrada! Aguarde o fim do cronômetro.</div>
+      <div id="pgAvisoRespondido" class="aviso-respondido" style="display:none;">Resposta registrada! Aguarde o fim do cronômetro.</div>
     </section>
 
     <!-- ============================================================
@@ -172,7 +172,10 @@
                 <span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span>
               </div>
               <h2>Aguardando a largada 🏁</h2>
-              <p id="painelContagem">Pilotos na grid: —</p>
+              <div class="painel-contagem-linha">
+                <p id="painelContagem">Pilotos na grid: —</p>
+                <button class="btn-atualizar-telao" id="btnAtualizarTelao" onclick="atualizarPilotosManual()" title="Atualizar quantidade de pilotos" aria-label="Atualizar quantidade de pilotos">🔄</button>
+              </div>
             </div>
           </div>
           <div id="painelRodape" class="painel-rodape" style="display:none;">
