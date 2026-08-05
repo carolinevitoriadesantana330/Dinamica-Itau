@@ -654,6 +654,13 @@ async function atualizarContagemJogadores() {
   }
 }
 
+async function atualizarPilotosManual() {
+  const btn = document.getElementById("btnAtualizarPilotos");
+  if (btn) { btn.disabled = true; btn.classList.add("girando"); }
+  await atualizarContagemJogadores();
+  if (btn) { btn.classList.remove("girando"); btn.disabled = false; }
+}
+
 function iniciarCorrida() {
   if (!PERGUNTAS.length) {
     mostrarToast("⚠️ Cadastre as perguntas no HTML antes de iniciar.", "erro");
