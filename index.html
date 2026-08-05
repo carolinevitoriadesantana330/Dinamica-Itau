@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>GP do Conhecimento · Quiz Itaú</title>
+<title>Corrida do Conhecimento · Quiz Itaú</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -14,7 +14,7 @@
   <header class="topbar">
     <button class="voltar" id="btnVoltar" style="display:none;" onclick="irPara('home')">←</button>
     <div>
-      <h1 id="tituloTopo">🏁 GP do Conhecimento</h1>
+      <h1 id="tituloTopo">🏁 Corrida do Conhecimento</h1>
       <div class="sub" id="subTopo">Plenária SPOD · Itaú Unibanco</div>
     </div>
     <img src="logo_itau.png" alt="Logo Itaú" class="logo-topbar">
@@ -28,17 +28,15 @@
     <section class="screen ativo" id="tela-home">
       <div class="hero">
         <div class="badge">🏎️💨</div>
-        <h2>Grand Prix do Conhecimento</h2>
+        <h2>Corrida do Conhecimento</h2>
         <p>10 perguntas sobre o Itaú. Quem responde <strong>certo</strong> e <strong>rápido</strong> sobe mais no pódio.</p>
-        <p class="hero-dica">📱 A pergunta aparece completa no seu celular. O telão mostra a mesma pergunta pra todo mundo acompanhar junto.</p>
       </div>
       <div class="menu">
         <button class="menu-item destaque" onclick="irPara('entrar')">
           <div class="icone">🏎️</div>
-          <div class="txt"><strong>Entrar na corrida</strong><span>Digite seu nome e prepare os motores</span></div>
+          <div class="txt"><strong>Entrar na corrida</strong><span>Digite seu nome completo</span></div>
         </button>
       </div>
-      <div class="rodape-nota">Cada piloto joga no próprio celular. O acesso ao painel de administração fica no ícone 🔒 no canto da tela.</div>
     </section>
 
     <!-- ============================================================
@@ -46,7 +44,7 @@
          ============================================================ -->
     <section class="screen" id="tela-entrar">
       <div class="cartao">
-        <label for="nomeJogador">Qual o seu nome?</label>
+        <label for="nomeJogador">Digite seu nome e sobrenome</label>
         <input type="text" id="nomeJogador" maxlength="40" placeholder="Ex: Ana Pereira" autocomplete="off">
         <button class="btn" onclick="entrarComoJogador()">Ligar os motores 🏁</button>
         <div id="entrarStatus"></div>
@@ -83,7 +81,7 @@
         <!-- botões A/B/C/D são inseridos aqui via script.js -->
       </div>
 
-      <div id="pgAvisoRespondido" class="aviso-respondido" style="display:none;">✅ Resposta registrada! Aguarde o fim do cronômetro.</div>
+      <div id="pgAvisoRespondido" class="aviso-respondido" style="display:none;"> Resposta registrada! Aguarde o fim do cronômetro.</div>
     </section>
 
     <!-- ============================================================
