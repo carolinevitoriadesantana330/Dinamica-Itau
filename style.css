@@ -79,7 +79,11 @@ body::before{
   background:rgba(255,255,255,.18); color:#fff; border:none;
   width:36px; height:36px; border-radius:10px; font-size:16px; cursor:pointer;
 }
-.logo-topbar{ height:26px; margin-left:auto; }
+.logo-topbar{
+  height:44px; margin-left:auto;
+  background:#fff; padding:6px 12px; border-radius:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,.18);
+}
 
 main{ flex:1; padding:18px; padding-bottom:100px; }
 
@@ -310,7 +314,7 @@ body[data-tela="admin"] .admin-float-wrap{ display:none; }
 }
 .podio-sub{ color:var(--tinta-mute); margin-bottom:32px; }
 .podio-blocos{ display:flex; align-items:flex-end; justify-content:center; gap:18px; max-width:760px; margin:0 auto; position:relative; }
-.podio-bloco{ flex:1; border-radius:16px 16px 0 0; padding:20px 10px 14px; text-align:center; position:relative; overflow:hidden; }
+.podio-bloco{ flex:1; border-radius:16px 16px 0 0; padding:20px 10px 16px; text-align:center; position:relative; overflow:visible; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; }
 .podio-bloco::before{
   content:""; position:absolute; top:0; left:0; right:0; height:10px;
   background-image:
@@ -320,16 +324,16 @@ body[data-tela="admin"] .admin-float-wrap{ display:none; }
     linear-gradient(-45deg, transparent 75%, #10131a 75%);
   background-size:10px 10px; background-color:#f4f5f7;
 }
-.podio-bloco .medalha{ font-size:40px; margin-top:6px; }
-.podio-bloco .nome{ font-family:var(--f-display); font-weight:700; font-size:17px; margin-top:6px; }
-.podio-bloco .pts{ font-family:var(--f-data); font-size:20px; color:var(--itau); margin-top:4px; }
+.podio-bloco .medalha{ font-size:40px; margin-top:6px; line-height:1; }
+.podio-bloco .nome{ font-family:var(--f-display); font-weight:700; font-size:17px; margin-top:6px; line-height:1.25; }
+.podio-bloco .pts{ font-family:var(--f-data); font-size:20px; color:var(--itau); margin-top:4px; line-height:1.3; white-space:nowrap; }
 .podio-p1{
-  height:220px; order:2;
+  min-height:220px; order:2;
   background:linear-gradient(180deg, rgba(255,210,61,.24), var(--bg-2) 70%);
   border:1px solid var(--ouro); box-shadow:0 -6px 24px rgba(255,210,61,.25);
 }
-.podio-p2{ height:170px; background:linear-gradient(180deg, rgba(214,220,229,.2), var(--bg-2) 70%); border:1px solid var(--prata); order:1; }
-.podio-p3{ height:130px; background:linear-gradient(180deg, rgba(224,149,77,.2), var(--bg-2) 70%); border:1px solid var(--bronze); order:3; }
+.podio-p2{ min-height:170px; background:linear-gradient(180deg, rgba(214,220,229,.2), var(--bg-2) 70%); border:1px solid var(--prata); order:1; }
+.podio-p3{ min-height:150px; background:linear-gradient(180deg, rgba(224,149,77,.2), var(--bg-2) 70%); border:1px solid var(--bronze); order:3; }
 .podio-resto{ max-width:600px; margin:34px auto 0; text-align:left; }
 
 /* ======================================================================
@@ -342,7 +346,7 @@ body[data-tela="admin"] .app{ max-width:none; }
 body[data-tela="admin"] .topbar{ padding:18px 28px; }
 body[data-tela="admin"] .topbar h1{ font-size:21px; }
 body[data-tela="admin"] .topbar .sub{ font-size:13.5px; }
-body[data-tela="admin"] .logo-topbar{ height:32px; }
+body[data-tela="admin"] .logo-topbar{ height:64px; padding:8px 16px; }
 body[data-tela="admin"] main{ padding:22px 28px 28px; min-height:calc(100vh - 60px); }
 body[data-tela="admin"] #adminLogin{ max-width:380px; margin:8vh auto 0; }
 
