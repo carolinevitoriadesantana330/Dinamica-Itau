@@ -2,126 +2,182 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Verdade ou Blefe · Itaú</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GP do Conhecimento · Quiz Itaú</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@600;700;800&family=Inter:wght@400;500;600;700&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-tela="home">
 <div class="app">
 
   <header class="topbar">
     <button class="voltar" id="btnVoltar" style="display:none;" onclick="irPara('home')">←</button>
     <div>
-      <h1 id="tituloTopo">Plenária SPOD · Acelerando rumo ao pódio! </h1>
-      <div class="sub" id="subTopo">Itaú Unibanco</div>
+      <h1 id="tituloTopo">🏁 GP do Conhecimento</h1>
+      <div class="sub" id="subTopo">Plenária SPOD · Itaú Unibanco</div>
     </div>
     <img src="logo_itau.png" alt="Logo Itaú" class="logo-topbar">
   </header>
 
   <main>
 
-    <!-- HOME -->
+    <!-- ============================================================
+         TELA: HOME
+         ============================================================ -->
     <section class="screen ativo" id="tela-home">
       <div class="hero">
-        <div class="badge">🏁</div>
-        <h2>🏆 Circuito da Verdade 🏆</h2>
-        <p>Cada piloto deverá apresentar 3 informações: 2 mentiras e 1 verdade, a missão dos copilotos é descobrir qual a informação verdadeira!</p>
-        <p>No fim da corrida, a pontuação definirá quem sobe ao pódio. 🥇🥈🥉</p>
+        <div class="badge">🏎️💨</div>
+        <h2>Grand Prix do Conhecimento</h2>
+        <p>10 perguntas sobre o Itaú. Quem responde <strong>certo</strong> e <strong>rápido</strong> sobe mais no pódio.</p>
+        <p class="hero-dica">📱 A pergunta aparece completa no seu celular. O telão mostra a mesma pergunta pra todo mundo acompanhar junto.</p>
       </div>
       <div class="menu">
-        <button class="menu-item" onclick="irPara('cadastro')">
+        <button class="menu-item destaque" onclick="irPara('entrar')">
           <div class="icone">🏎️</div>
-          <div class="txt"><strong>1. Cadastrar meus pilotos</strong><span>Registre o nome de todos do grupo</span></div>
-        </button>
-        <button class="menu-item" onclick="irPara('jogar-selecionar')">
-          <div class="icone">⚡</div>
-          <div class="txt"><strong>2. Ligue os motores</strong><span>Registrar quem acertou e quem errou</span></div>
-        </button>
-        <button class="menu-item" onclick="irPara('resultado-selecionar')">
-          <div class="icone">🎯</div>
-          <div class="txt"><strong>3. Pódio do Grupo </strong><span>Ver o ranking do seu grupo</span></div>
-        </button>
-        <button class="menu-item" onclick="abrirPainel()">
-          <div class="icone">🏆</div>
-          <div class="txt"><strong>4. Pódio SPOD 🥇🥈🥉</strong><span>Resultado de todos os grupos (telão)</span></div>
+          <div class="txt"><strong>Entrar na corrida</strong><span>Digite seu nome e prepare os motores</span></div>
         </button>
       </div>
-      <div class="rodape-nota">Cada grupo usa apenas 1 celular durante o jogo.</div>
+      <div class="rodape-nota">Cada piloto joga no próprio celular. O acesso ao painel de administração fica no ícone 🔒 no canto da tela.</div>
     </section>
 
-    <!-- CADASTRO -->
-    <section class="screen" id="tela-cadastro">
-      <label>Qual o número do seu grupo?</label>
-       <label>(Está no papel entregue na recepção da Plenária)</label>
-      <input type="number" id="cadGrupoNum" min="1" max="20" placeholder="Ex: 1" onchange="carregarCadastroExistente()">
-
-      <div class="aviso">Use nome sobrenome de cada piloto (ex: "Ana Pereira"). Até 10 pessoas por grupo</div>
-
-      <div id="cadCampos" style="margin-top:14px;"></div>
-
-      <button class="btn secundario" id="btnAdicionarPessoa" onclick="adicionarCampoNome()">+ Adicionar pessoa</button>
-      <button class="btn" onclick="salvarGrupo()">Salvar grupo</button>
-      <div id="cadStatus"></div>
-      <button class="btn" onclick="irPara('jogar-selecionar')">Começar a jogar 🎮</button>
-    </section>
-
-    <!-- SELECIONAR GRUPO PARA JOGAR -->
-    <section class="screen" id="tela-jogar-selecionar">
+    <!-- ============================================================
+         TELA: ENTRAR (cadastro rápido do piloto)
+         ============================================================ -->
+    <section class="screen" id="tela-entrar">
       <div class="cartao">
-        <label>Qual o número do seu grupo?</label>
-        <input type="number" id="jogarGrupoNum" min="1" max="20" placeholder="Ex: 1">
-        <button class="btn" onclick="iniciarJogo()">Começar a jogar 🎮</button>
-        <div id="jogarSelecionarErro"></div>
+        <label for="nomeJogador">Qual o seu nome?</label>
+        <input type="text" id="nomeJogador" maxlength="40" placeholder="Ex: Ana Pereira" autocomplete="off">
+        <button class="btn" onclick="entrarComoJogador()">Ligar os motores 🏁</button>
+        <div id="entrarStatus"></div>
       </div>
-      <div class="aviso">Só é possível jogar depois de cadastrar os nomes do grupo na etapa 1 <strong>e</strong> depois que o administrador der a largada geral no Pódio SPOD. Cada apresentador tem 1 minuto no cronômetro.</div>
     </section>
 
-    <!-- JOGO -->
-    <section class="screen" id="tela-jogo">
+    <!-- ============================================================
+         TELA: LOBBY (sala de espera até o admin dar a largada)
+         ============================================================ -->
+    <section class="screen" id="tela-lobby">
+      <div class="lobby-wrap">
+        <div class="semaforo-mini espera" id="lobbySemaforo">
+          <span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span>
+        </div>
+        <h2>Motores ligados, <span id="lobbyNome">piloto</span>!</h2>
+        <p id="lobbyMensagem">Aguardando o administrador dar a largada da corrida...</p>
+        <button class="btn linkzinho" onclick="verificarEstadoAgora()">🔄 Verificar novamente</button>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         TELA: PERGUNTA (visão do piloto — pergunta completa + opções com texto)
+         ============================================================ -->
+    <section class="screen" id="tela-pergunta">
       <div class="progresso-wrap">
-        <span id="jogoProgressoTxt">Apresentador 1 de 10</span>
-        <span id="jogoGrupoTxt">Grupo 1</span>
+        <span id="pgProgressoTxt">Pergunta 1 de 10</span>
+        <span id="pgTempoTxt">15s</span>
       </div>
-      <div class="barra"><div id="jogoBarra" style="width:0%"></div></div>
-      <div class="cronometro-wrap">
-        <span id="jogoCronometro">⏱️ 1:00</span>
-      </div>
+      <div class="barra-tempo-wrap"><div id="pgBarraTempo" class="barra-tempo"></div></div>
 
-      <div class="spotlight">
-        <div class="eyebrow">Entregue o celular para</div>
-        <div class="nome" id="jogoApresentador">—</div>
-        <div class="instrucao">Fale 3 afirmações (2 mentiras + 1 verdade). Marque abaixo se cada colega acertou a verdade.</div>
-        <div class="instrucao2">Não conte a resposta certa até que todos do grupo respondam.</div>
+      <div id="pgPerguntaTexto" class="pg-pergunta">Texto da pergunta</div>
+
+      <div id="pgOpcoes" class="opcoes-grid">
+        <!-- botões A/B/C/D são inseridos aqui via script.js -->
       </div>
 
-      <div id="jogoOuvintes"></div>
-
-      <button class="btn" id="btnProximoApresentador" onclick="proximoApresentador()" disabled>Próximo apresentador</button>
+      <div id="pgAvisoRespondido" class="aviso-respondido" style="display:none;">✅ Resposta registrada! Aguarde o fim do cronômetro.</div>
     </section>
 
-    <!-- RESULTADO DE UM GRUPO (SELEÇÃO) -->
-    <section class="screen" id="tela-resultado-selecionar">
-      <div class="cartao">
-        <label>Número do grupo</label>
-        <input type="number" id="resGrupoNum" min="1" max="20" placeholder="Ex: 1">
-        <button class="btn" onclick="verResultadoGrupo()">Ver resultado</button>
-        <div id="resSelecionarErro"></div>
+    <!-- ============================================================
+         TELA: FEEDBACK (resultado individual imediato)
+         ============================================================ -->
+    <section class="screen" id="tela-feedback">
+      <div class="feedback-wrap">
+        <div class="fb-icone" id="fbIcone">🏁</div>
+        <h2 id="fbTitulo">Resultado</h2>
+        <div class="fb-pontos" id="fbPontos">+0 pontos</div>
+        <div class="fb-total">Total na corrida: <strong id="fbPontosTotal">0</strong> pontos</div>
+        <div class="fb-aguardando">Aguardando os outros pilotos cruzarem a linha de chegada desta pergunta...</div>
       </div>
     </section>
 
-    <!-- RESULTADO DE UM GRUPO -->
-    <section class="screen" id="tela-resultado-grupo">
-      <div id="resGrupoConteudo"></div>
-      <button class="btn secundario" onclick="irPara('home')">Voltar ao início</button>
-      <button class="btn secundario" onclick="abrirPainel()">Resultado Geral🎖️</button>
+    <!-- ============================================================
+         TELA: FIM (visão do piloto — resultado pessoal)
+         ============================================================ -->
+    <section class="screen" id="tela-fim-jogador">
+      <div class="fim-wrap">
+        <div class="fim-bandeira">🏁</div>
+        <h2>Corrida finalizada!</h2>
+        <p>Você cruzou a linha de chegada com:</p>
+        <div class="fim-pontos" id="fimPontosJogador">0</div>
+        <p class="fim-legenda">pontos</p>
+        <p>Veja o pódio completo no telão! 🏆</p>
+      </div>
     </section>
 
-    <!-- PAINEL GERAL -->
-    <section class="screen" id="tela-painel">
-      <div id="painelConteudo"><div class="spinner"></div></div>
-      <button class="btn secundario" onclick="abrirPainel()">🔄 Atualizar painel</button>
+    <!-- ============================================================
+         TELA: ADMIN (painel de controle + telão, uso em monitor/TV
+         na orientação horizontal — controles à esquerda, exibição
+         da corrida (igual à do piloto) à direita)
+         ============================================================ -->
+    <section class="screen" id="tela-admin">
+      <div id="adminLogin" class="cartao">
+        <label for="senhaAdminInput">Senha do administrador</label>
+        <input type="password" id="senhaAdminInput" placeholder="••••••" autocomplete="off">
+        <button class="btn" onclick="entrarAdmin()">Entrar</button>
+        <div id="adminLoginStatus"></div>
+      </div>
+
+      <div id="adminPainel" class="admin-tv" style="display:none;">
+
+        <!-- coluna de controles do administrador -->
+        <div class="admin-controles">
+          <div class="admin-status-bar">
+            <span id="adminConexao" class="pill pill-ok">🟢 conectado</span>
+            <span id="adminFaseAtual" class="pill">fase: lobby</span>
+          </div>
+
+          <div class="admin-cartao">
+            <div class="admin-linha">
+              <div><strong>Pergunta atual:</strong> <span id="adminPerguntaAtualTxt">—</span></div>
+            </div>
+            <div class="admin-contadores">
+              <div class="admin-contador"><span id="adminTotalJogadores">—</span><small>pilotos</small></div>
+              <div class="admin-contador"><span id="adminTotalRespostas">—</span><small>respostas</small></div>
+            </div>
+          </div>
+
+          <div class="admin-acoes">
+            <button class="btn" id="btnIniciarCorrida" onclick="iniciarCorrida()">🏁 Iniciar Corrida</button>
+            <button class="btn" id="btnProximaPergunta" onclick="abrirProximaPergunta()" style="display:none;">🚦 Próxima pergunta</button>
+            <button class="btn secundario" id="btnEncerrarTempo" onclick="encerrarTempoAgora()" style="display:none;">⏹️ Encerrar tempo agora</button>
+            <button class="btn secundario" id="btnRevelar" onclick="revelarResultado()" style="display:none;">📊 Revelar resultado</button>
+            <button class="btn secundario" id="btnRanking" onclick="mostrarRankingParcial()" style="display:none;">🏆 Ranking parcial</button>
+            <button class="btn" id="btnEncerrarCorrida" onclick="encerrarCorrida()" style="display:none;">🏆 Revelar Pódio</button>
+          </div>
+
+          <div class="admin-perigo">
+            <button class="btn mini" onclick="tentarTelaCheiaHorizontal()">🖥️ Tela cheia</button>
+            <button class="btn perigo mini" onclick="reiniciarJogo()">⚠️ Reiniciar jogo</button>
+          </div>
+        </div>
+
+        <!-- coluna de exibição (telão) — mesma pergunta/alternativas/
+             cronômetro que aparecem no celular do piloto -->
+        <div class="admin-tv-display">
+          <div id="painelConteudo">
+            <div class="painel-lobby">
+              <div class="semaforo" id="painelSemaforo">
+                <span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span>
+              </div>
+              <h2>Aguardando a largada 🏁</h2>
+              <p id="painelContagem">Pilotos na grid: —</p>
+            </div>
+          </div>
+          <div id="painelRodape" class="painel-rodape" style="display:none;">
+            <span>👥 <strong id="painelRodapeJogadores">—</strong> participantes</span>
+            <span>✅ <strong id="painelRodapeRespostas">—</strong> respostas nesta pergunta</span>
+          </div>
+        </div>
+      </div>
     </section>
 
   </main>
@@ -129,9 +185,76 @@
 
 <!-- BOTÃO FLUTUANTE ADMIN — visível em qualquer tela, só funciona com a senha -->
 <div id="adminFloatWrap" class="admin-float-wrap">
-  <div id="adminFloatPanel" class="admin-float-panel" style="display:none;"></div>
-  <button id="btnAdminFloat" class="admin-float-btn" onclick="toggleAdminFloat()">🔒 Admin</button>
+  <button id="btnAdminFloat" class="admin-float-btn" onclick="irPara('admin')">🔒 Admin</button>
 </div>
+
+<div id="toastWrap" class="toast-wrap"></div>
+
+<!-- ============================================================
+     ✏️  EDITE SUAS PERGUNTAS AQUI — de 1 a 10 perguntas
+     ------------------------------------------------------------
+     - "pergunta": o texto que vai aparecer GRANDE no telão
+     - "opcoes": exatamente 4 alternativas, na ordem A, B, C, D
+     - "correta": o ÍNDICE da alternativa certa (0=A, 1=B, 2=C, 3=D)
+     - A quantidade de perguntas do jogo é a quantidade de itens
+       que você deixar nesta lista (pode ser menos que 10).
+     - Não precisa mexer em nenhum outro arquivo para trocar as
+       perguntas — só aqui.
+     ============================================================ -->
+<script type="application/json" id="dados-perguntas">
+[
+  {
+    "pergunta": "EXEMPLO — Em que ano o Itaú e o Unibanco anunciaram a fusão que deu origem ao Itaú Unibanco?",
+    "opcoes": ["2005", "2008", "2011", "2014"],
+    "correta": 1
+  },
+  {
+    "pergunta": "PERGUNTA 2 — escreva aqui o texto da pergunta",
+    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correta": 0
+  },
+  {
+    "pergunta": "PERGUNTA 3 — escreva aqui o texto da pergunta",
+    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correta": 0
+  },
+  {
+    "pergunta": "PERGUNTA 4 — escreva aqui o texto da pergunta",
+    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correta": 0
+  },
+  {
+    "pergunta": "PERGUNTA 5 — escreva aqui o texto da pergunta",
+    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correta": 0
+  },
+  {
+    "pergunta": "PERGUNTA 6 — escreva aqui o texto da pergunta",
+    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correta": 0
+  },
+  {
+    "pergunta": "PERGUNTA 7 — escreva aqui o texto da pergunta",
+    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correta": 0
+  },
+  {
+    "pergunta": "PERGUNTA 8 — escreva aqui o texto da pergunta",
+    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correta": 0
+  },
+  {
+    "pergunta": "PERGUNTA 9 — escreva aqui o texto da pergunta",
+    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correta": 0
+  },
+  {
+    "pergunta": "PERGUNTA 10 — escreva aqui o texto da pergunta",
+    "opcoes": ["Opção A", "Opção B", "Opção C", "Opção D"],
+    "correta": 0
+  }
+]
+</script>
 
 <!-- Biblioteca cliente do Supabase (carregada via CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
