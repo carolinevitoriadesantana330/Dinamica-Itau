@@ -80,9 +80,10 @@ body::before{
   width:36px; height:36px; border-radius:10px; font-size:16px; cursor:pointer;
 }
 .logo-topbar{
-  height:44px; margin-left:auto;
-  background:#fff; padding:6px 12px; border-radius:10px;
-  box-shadow:0 2px 8px rgba(0,0,0,.18);
+  height:64px; width:auto; max-width:170px;
+  object-fit:contain; object-position:right center;
+  margin-left:auto; flex-shrink:0;
+  background:transparent; padding:0; border-radius:0; box-shadow:none;
 }
 
 main{ flex:1; padding:18px; padding-bottom:100px; }
@@ -346,7 +347,7 @@ body[data-tela="admin"] .app{ max-width:none; }
 body[data-tela="admin"] .topbar{ padding:18px 28px; }
 body[data-tela="admin"] .topbar h1{ font-size:21px; }
 body[data-tela="admin"] .topbar .sub{ font-size:13.5px; }
-body[data-tela="admin"] .logo-topbar{ height:64px; padding:8px 16px; }
+body[data-tela="admin"] .logo-topbar{ height:100px; max-width:260px; }
 body[data-tela="admin"] main{ padding:22px 28px 28px; min-height:calc(100vh - 60px); }
 body[data-tela="admin"] #adminLogin{ max-width:380px; margin:8vh auto 0; }
 
@@ -393,6 +394,7 @@ body[data-tela="admin"] #adminLogin{ max-width:380px; margin:8vh auto 0; }
 @media (max-width:340px){
   .opcoes-grid{ gap:8px; }
   .opcao-btn{ font-size:14px; padding:12px 14px; }
+  .logo-topbar{ height:52px; max-width:130px; }
 }
 
 /* respeita usuários que pedem menos movimento */
