@@ -1,773 +1,749 @@
-/* ============================================================
-   CONFIGURAÇÃO DO SUPABASE
-   Troque pelos dados do SEU projeto:
-   Supabase > Project Settings > API > Project URL / anon public key
-============================================================ */
-const SUPABASE_URL = 'https://azwnhychxfpwpbobvoip.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_1uphWuzAbz9unMX9j75PEg_w1pp-LOG';
+/* ======================================================================
+   GP DO CONHECIMENTO — Quiz Itaú (tema F1)
+   Lógica do jogo. Ver a explicação no chat para o racional de arquitetura
+   (broadcast em vez de postgres_changes, fallback por polling, etc.)
+   ====================================================================== */
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+/* ----------------------------------------------------------------------
+   1) CONFIGURAÇÃO — troque estes valores antes de publicar
+   ---------------------------------------------------------------------- */
+const SUPABASE_URL = "https://azwnhychxfpwpbobvoip.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_1uphWuzAbz9unMX9j75PEg_w1pp-LOG";
 
-/* ============================================================
-   LIMITES DO JOGO
-============================================================ */
-const MAX_GRUPOS = 20;
-const TAMANHO_PADRAO = 10; // máximo de pilotos por grupo
-const TEMPO_APRESENTACAO = 60; // segundos de cronômetro por apresentador
+const SENHA_ADMIN = "itau2026"; // troque antes do evento — ver aviso de segurança no chat
+const TEMPO_PERGUNTA_MS = 15000; // 15 segundos por pergunta
+const PONTOS_MAX = 1000;         // pontos por acertar instantaneamente
+const PONTOS_MIN_ACERTO = 500;   // pontos mínimos por acertar (mesmo respondendo no último segundo)
+const NOME_CANAL_REALTIME = "gpq-estado-corrida";
+const INTERVALO_POLL_MS = 4000;  // frequência do "auto-cura" além do broadcast
 
-/* ============================================================
-   CAMADA DE ARMAZENAMENTO
-   Imita a API window.storage (get/set/list/delete), gravando na
-   tabela "app_storage" do Supabase. Inclui retry automático para
-   aguentar várias telas gravando/lendo ao mesmo tempo (até 20
-   grupos jogando simultaneamente) sem que um erro de rede solto
-   derrube a experiência.
-============================================================ */
-async function comRetry(fn, tentativas = 3, esperaMs = 500) {
-  let ultimoErro;
-  for (let i = 0; i < tentativas; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      ultimoErro = e;
-      if (i < tentativas - 1) {
-        await new Promise(res => setTimeout(res, esperaMs * (i + 1)));
+const LETRAS = ["A", "B", "C", "D"];
+const BANDEIRAS = ["🔴", "🔵", "🟡", "🟢"]; // vermelha / azul / amarela / verde — mesma ordem das cores CSS cor-0..cor-3
+
+/* ----------------------------------------------------------------------
+   2) ESTADO LOCAL (em memória, por aba/dispositivo)
+   ---------------------------------------------------------------------- */
+let sb = null;                     // cliente supabase
+let canal = null;                  // canal de broadcast
+let PERGUNTAS = [];                // carregado do bloco <script id="dados-perguntas">
+let jogadorAtual = null;           // { id, nome, pontos_total }
+let isAdmin = false;
+
+let estadoAplicadoEm = null;       // timestamp (string ISO) do último estado já processado — evita reprocessar
+let faseAtual = "lobby";
+let perguntaIndexAtual = 0;        // 1-based, casa com PERGUNTAS[perguntaIndexAtual - 1]
+let horaInicioPerguntaMs = null;   // Date.now() equivalente ao "iniciado_em" do estado
+let jaRespondeuNumero = 0;         // qual número de pergunta o jogador já respondeu (evita responder 2x)
+let respostaLocalAtual = null;     // { pergunta, opcaoIndex, acertou, pontosGanhos } — guardado até o admin revelar
+
+let timerHandle = null;
+let pollHandle = null;
+
+let painelUltimaPerguntaRenderizada = 0; // controla quando tocar a animação do semáforo no telão
+
+/* ----------------------------------------------------------------------
+   3) BOOT
+   ---------------------------------------------------------------------- */
+document.addEventListener("DOMContentLoaded", iniciar);
+
+function iniciar() {
+  carregarPerguntas();
+  iniciarClienteSupabase();
+  restaurarJogadorLocal();
+  conectarRealtime();
+  buscarEstadoRemoto(true);
+  pollHandle = setInterval(() => buscarEstadoRemoto(false), INTERVALO_POLL_MS);
+
+  // só o admin, só durante uma pergunta ativa, para acompanhar respostas chegando —
+  // não gera nenhuma carga extra nos 140 celulares dos pilotos
+  setInterval(() => {
+    if (isAdmin && document.body.dataset.tela === "admin" && faseAtual === "pergunta") {
+      atualizarContagemJogadores();
+    }
+  }, 3000);
+
+  // rodapé do telão: contadores de participantes/respostas, atualizados
+  // direto no painel do administrador (que agora também é o telão)
+  setInterval(() => {
+    if (isAdmin) atualizarRodapePainel();
+  }, 3000);
+}
+
+function iniciarClienteSupabase() {
+  if (SUPABASE_URL.includes("COLOQUE_AQUI") || SUPABASE_ANON_KEY.includes("COLOQUE_AQUI")) {
+    mostrarToast("⚠️ Configure SUPABASE_URL e SUPABASE_ANON_KEY no script.js", "erro");
+  }
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+function carregarPerguntas() {
+  try {
+    const bloco = document.getElementById("dados-perguntas");
+    const dados = JSON.parse(bloco.textContent);
+    if (!Array.isArray(dados) || dados.length === 0) throw new Error("lista vazia");
+    PERGUNTAS = dados.slice(0, 10).map((p, i) => {
+      if (!p.pergunta || !Array.isArray(p.opcoes) || p.opcoes.length !== 4 || typeof p.correta !== "number") {
+        throw new Error("pergunta " + (i + 1) + " está com formato inválido");
       }
-    }
-  }
-  throw ultimoErro;
-}
-
-const storage = {
-  async get(key) {
-    return comRetry(async () => {
-      const { data, error } = await supabaseClient
-        .from('app_storage')
-        .select('value')
-        .eq('key', key)
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) return null;
-      return { key, value: JSON.stringify(data.value) };
+      return p;
     });
-  },
-  async set(key, value) {
-    return comRetry(async () => {
-      const parsedValue = JSON.parse(value);
-      const { error } = await supabaseClient
-        .from('app_storage')
-        .upsert({ key, value: parsedValue, updated_at: new Date().toISOString() });
-      if (error) throw error;
-      return { key, value };
-    });
-  },
-  async delete(key) {
-    return comRetry(async () => {
-      const { error } = await supabaseClient
-        .from('app_storage')
-        .delete()
-        .eq('key', key);
-      if (error) throw error;
-      return { key, deleted: true };
-    });
-  },
-  async list(prefix) {
-    return comRetry(async () => {
-      let query = supabaseClient.from('app_storage').select('key');
-      if (prefix) query = query.like('key', `${prefix}%`);
-      const { data, error } = await query;
-      if (error) throw error;
-      return { keys: (data || []).map(row => row.key) };
-    });
-  }
-};
-
-/* ============================================================
-   ACESSO DE ADMINISTRADOR (botão flutuante "Admin", canto inferior direito)
-   A senha NÃO fica neste arquivo — fica guardada com hash no Supabase
-   (tabela admin_config) e é verificada pela função verificar_senha_admin,
-   que só devolve true/false, nunca a senha em si.
-   Ao tocar no botão "Admin" pela primeira vez, o app pede a senha.
-   Acertando, ele lembra (localStorage) nesse aparelho e não pergunta
-   de novo. Em qualquer outro aparelho, sem a senha, os botões de
-   largada/resetar nunca aparecem.
-============================================================ */
-function souAdmin(){
-  try{
-    return localStorage.getItem('spod_admin') === '1';
-  }catch(e){
-    return false; // se localStorage falhar (modo privado etc.), nunca mostra os controles por padrão
-  }
-}
-function sairDoModoAdmin(){
-  try{ localStorage.removeItem('spod_admin'); }catch(e){}
-  document.getElementById('adminFloatPanel').style.display = 'none';
-  atualizarBotaoAdminFloat();
-}
-
-/* ============================================================
-   ESCAPE DE HTML
-   Nomes são digitados pelos próprios participantes e depois são
-   exibidos para todo mundo (pódio, painel geral). Sem escapar,
-   alguém poderia digitar algo como <script> ou "><img ...> no
-   campo de nome e quebrar/injetar código na tela de todos.
-============================================================ */
-function escaparHtml(txt){
-  const div = document.createElement('div');
-  div.textContent = String(txt);
-  return div.innerHTML;
-}
-
-/* ============================================================
-   BOTÃO FLUTUANTE "ADMIN" (canto inferior direito, em qualquer tela)
-============================================================ */
-function atualizarBotaoAdminFloat(){
-  const btn = document.getElementById('btnAdminFloat');
-  if(!btn) return;
-  btn.textContent = souAdmin() ? '🔓 Admin' : '🔒 Admin';
-}
-
-async function toggleAdminFloat(){
-  const painel = document.getElementById('adminFloatPanel');
-  if(!souAdmin()){
-    const senha = prompt('Senha de administrador:');
-    if(senha === null) return; // cancelou
-    let senhaCorreta = false;
-    try{
-      const { data, error } = await comRetry(() => supabaseClient.rpc('verificar_senha_admin', { senha_tentativa: senha }));
-      if(error) throw error;
-      senhaCorreta = data === true;
-    }catch(e){
-      alert('Não consegui checar a senha agora. Verifique a internet e tente de novo.');
-      return;
-    }
-    if(!senhaCorreta){
-      alert('Senha incorreta.');
-      return;
-    }
-    try{ localStorage.setItem('spod_admin', '1'); }catch(e){}
-    atualizarBotaoAdminFloat();
-  }
-  const abrindo = painel.style.display === 'none' || !painel.style.display;
-  painel.style.display = abrindo ? 'block' : 'none';
-  if(abrindo) await renderAdminFloatPanel();
-}
-
-async function renderAdminFloatPanel(){
-  const painel = document.getElementById('adminFloatPanel');
-  painel.innerHTML = '<div class="spinner" style="margin:14px auto;"></div>';
-  try{
-    const estado = await lerEstadoJogo();
-    const lista = await storage.list('grupo:');
-    const chaves = (lista && lista.keys) ? lista.keys : [];
-    const totalGruposCadastrados = chaves.filter(k => k.endsWith(':membros')).length;
-
-    painel.innerHTML = `
-      <p style="font-size:12.5px;color:var(--tinta-suave);margin:0 0 10px;">
-        ${totalGruposCadastrados} de ${MAX_GRUPOS} grupos cadastraram pilotos.
-      </p>
-      ${estado.iniciado
-        ? '<div class="aviso" style="font-size:12px;padding:8px 10px;">🏁 Largada dada!</div><button class="btn secundario" style="margin-top:8px;" id="btnResetarFloat" onclick="resetarLargada()">↺ Resetar largada</button>'
-        : '<button class="btn" style="margin-top:0;" id="btnLargada" onclick="darLargada()">🏁 Dar a largada geral</button>'
-      }
-      <button class="btn fantasma" style="margin-top:8px;padding:8px;font-size:12px;" onclick="sairDoModoAdmin()">Sair do modo admin</button>
-    `;
-  }catch(e){
-    painel.innerHTML = '<div class="aviso" style="font-size:12px;">Erro ao carregar. Feche e abra o painel de novo.</div>';
+  } catch (e) {
+    console.error("Erro ao carregar perguntas:", e);
+    mostrarToast("⚠️ Erro no formato das perguntas (veja o console)", "erro");
+    PERGUNTAS = [];
   }
 }
 
-/* ============================================================
-   NAVEGAÇÃO
-============================================================ */
-function irPara(tela){
-  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('ativo'));
-  document.getElementById('tela-'+tela).classList.add('ativo');
-  const titulos = {
-    'home': ['Plenária SPOD','· Itaú · '],
-    'cadastro': ['Cadastrar meus pilotos','Digite o nome e sobrenome de todos'],
-    'jogar-selecionar': ['Ligue os Motores','Escolha o número do grupo'],
-    'jogo': ['Rodada em andamento','Marque acertou / errou'],
-    'resultado-selecionar': ['Pódio do Grupo','Escolha o número do grupo'],
-    'resultado-grupo': ['Pódio do Grupo','Ranking de acertos e erros'],
-    'painel': ['Pódio SPOD 🥇🥈🥉','Todos os grupos · tempo real']
-  };
-  document.getElementById('tituloTopo').textContent = titulos[tela][0];
-  document.getElementById('subTopo').textContent = titulos[tela][1];
-  document.getElementById('btnVoltar').style.display = tela==='home' ? 'none' : 'flex';
-  pararCronometro();
-  pararEsperaLargada();
-  pararPainelAutoRefresh();
+/* ----------------------------------------------------------------------
+   4) NAVEGAÇÃO ENTRE TELAS
+   ---------------------------------------------------------------------- */
+function irPara(tela) {
+  document.querySelectorAll(".screen").forEach((s) => s.classList.remove("ativo"));
+  const alvo = document.getElementById("tela-" + tela);
+  if (alvo) alvo.classList.add("ativo");
+  document.body.dataset.tela = tela;
+
+  const btnVoltar = document.getElementById("btnVoltar");
+  btnVoltar.style.display = tela === "home" ? "none" : "block";
 }
 
-/* ---------------- VALIDAÇÃO DE NOME + SOBRENOME ---------------- */
-function nomeValido(nome){
-  const partes = nome.trim().split(/\s+/).filter(Boolean);
-  return partes.length >= 2;
+/* ----------------------------------------------------------------------
+   5) TOASTS (avisos discretos, importantes para transparência de rede)
+   ---------------------------------------------------------------------- */
+function mostrarToast(msg, tipo) {
+  const wrap = document.getElementById("toastWrap");
+  const el = document.createElement("div");
+  el.className = "toast" + (tipo === "erro" ? " erro" : "");
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 3800);
 }
 
-/* ---------------- VALIDAÇÃO DE NÚMERO DE GRUPO ---------------- */
-function grupoNumValido(n){
-  const num = parseInt(n, 10);
-  return Number.isInteger(num) && num >= 1 && num <= MAX_GRUPOS;
+function formatarPontos(n) {
+  return Math.max(0, Math.round(n || 0)).toLocaleString("pt-BR");
 }
 
-/* ---------------- CADASTRO ---------------- */
-let cadNomes = [];
-
-function renderCampos(){
-  const wrap = document.getElementById('cadCampos');
-  wrap.innerHTML = '';
-  cadNomes.forEach((nome, i)=>{
-    const div = document.createElement('div');
-    div.className = 'campo-nome';
-    div.innerHTML = `
-      <div class="num">${i+1}</div>
-      <input type="text" placeholder="Nome e sobrenome (ex: Ana Pereira)" value="${nome.replace(/"/g,'&quot;')}" oninput="cadNomes[${i}]=this.value">
-      <button class="lixeira" onclick="removerCampo(${i})">✕</button>
-    `;
-    wrap.appendChild(div);
-  });
-  const btnAdd = document.getElementById('btnAdicionarPessoa');
-  if(btnAdd) btnAdd.disabled = cadNomes.length >= TAMANHO_PADRAO;
-}
-function adicionarCampoNome(){
-  if(cadNomes.length >= TAMANHO_PADRAO){
-    document.getElementById('cadStatus').innerHTML = '<div class="aviso">Cada grupo pode ter no máximo ' + TAMANHO_PADRAO + ' pilotos.</div>';
-    return;
-  }
-  cadNomes.push('');
-  renderCampos();
-}
-function removerCampo(i){
-  cadNomes.splice(i,1);
-  renderCampos();
-}
-function inicializarCadastro(){
-  cadNomes = new Array(2).fill('');
-  renderCampos();
-  document.getElementById('cadStatus').innerHTML = '';
-}
-
-async function carregarCadastroExistente(){
-  const nInput = document.getElementById('cadGrupoNum').value;
-  const status = document.getElementById('cadStatus');
-  status.innerHTML = '';
-  if(!nInput) return;
-  if(!grupoNumValido(nInput)){
-    status.innerHTML = '<div class="aviso">O número do grupo deve ser de 1 a ' + MAX_GRUPOS + '.</div>';
-    cadNomes = new Array(2).fill('');
-    renderCampos();
-    return;
-  }
-  const n = parseInt(nInput, 10);
-  status.innerHTML = '<div class="spinner"></div>';
-  try{
-    const r = await storage.get('grupo:' + n + ':membros');
-    if(r && r.value){
-      cadNomes = JSON.parse(r.value);
-      if(cadNomes.length < 2){
-        while(cadNomes.length < 2) cadNomes.push('');
-      }
-    } else {
-      cadNomes = new Array(2).fill('');
-    }
-    status.innerHTML = '';
-  }catch(e){
-    cadNomes = new Array(2).fill('');
-    status.innerHTML = '<div class="aviso">Não consegui carregar esse grupo agora. Você pode continuar digitando e tentar salvar novamente.</div>';
-  }
-  renderCampos();
-}
-
-async function salvarGrupo(){
-  const nInput = document.getElementById('cadGrupoNum').value;
-  const status = document.getElementById('cadStatus');
-  if(!nInput){ status.innerHTML = '<div class="aviso">Informe o número do grupo.</div>'; return; }
-  if(!grupoNumValido(nInput)){
-    status.innerHTML = '<div class="aviso">O número do grupo deve ser de 1 a ' + MAX_GRUPOS + '.</div>';
-    return;
-  }
-  const n = parseInt(nInput, 10);
-  const nomes = cadNomes.map(x=>x.trim()).filter(x=>x.length>0);
-
-  if(nomes.length < 2){ status.innerHTML = '<div class="aviso">Cadastre pelo menos 2 pessoas.</div>'; return; }
-  if(nomes.length > TAMANHO_PADRAO){ status.innerHTML = '<div class="aviso">Cada grupo pode ter no máximo ' + TAMANHO_PADRAO + ' pilotos.</div>'; return; }
-
-  const nomesInvalidos = nomes.filter(nm => !nomeValido(nm));
-  if(nomesInvalidos.length > 0){
-    status.innerHTML = '<div class="aviso">Digite nome <strong>e</strong> sobrenome de cada piloto (ex: "Ana Pereira"). Corrija: ' + nomesInvalidos.join(', ') + '</div>';
-    return;
-  }
-
-  // Nomes duplicados no mesmo grupo quebram a contagem de acertos/erros (o app usa
-  // o nome como identificador único dentro do grupo), então bloqueamos aqui.
-  const nomesNormalizados = nomes.map(nm => nm.trim().toLowerCase().replace(/\s+/g,' '));
-  const duplicados = nomesNormalizados.filter((nm, i) => nomesNormalizados.indexOf(nm) !== i);
-  if(duplicados.length > 0){
-    status.innerHTML = '<div class="aviso">Há nomes repetidos nesse grupo. Se houver duas pessoas com o mesmo nome, peça para uma delas incluir o sobrenome completo ou uma inicial do meio para diferenciar.</div>';
-    return;
-  }
-
-  status.innerHTML = '<div class="spinner"></div>';
-  try{
-    await storage.set('grupo:' + n + ':membros', JSON.stringify(nomes));
-    status.innerHTML = '<div class="aviso">✅ Grupo ' + n + ' salvo com ' + nomes.length + ' pessoas!</div>';
-  }catch(e){
-    status.innerHTML = '<div class="aviso">Erro ao salvar. Verifique a conexão e tente novamente.</div>';
-  }
-}
-
-/* ---------------- ESTADO GLOBAL DO JOGO (LARGADA) ---------------- */
-// Chave única 'jogo:estado' controlada pelo admin no Painel Geral.
-// Enquanto iniciado=false, nenhum grupo consegue entrar na tela de jogo.
-async function lerEstadoJogo(){
-  try{
-    const r = await storage.get('jogo:estado');
-    if(r && r.value) return JSON.parse(r.value);
-  }catch(e){}
-  return { iniciado:false };
-}
-async function darLargada(){
-  const btn = document.getElementById('btnLargada');
-  if(btn) btn.disabled = true;
-  try{
-    await storage.set('jogo:estado', JSON.stringify({ iniciado:true, ts: Date.now() }));
-  }catch(e){
-    alert('Não consegui dar a largada agora. Tente novamente.');
-  }
-  await renderAdminFloatPanel();
-}
-async function resetarLargada(){
-  if(!confirm('Isso vai travar TODOS os grupos de volta na tela de espera, mesmo quem já está jogando. Tem certeza?')) return;
-  try{
-    await storage.set('jogo:estado', JSON.stringify({ iniciado:false, ts: Date.now() }));
-  }catch(e){}
-  await renderAdminFloatPanel();
-}
-
-let esperaLargadaId = null;
-function pararEsperaLargada(){
-  if(esperaLargadaId){ clearInterval(esperaLargadaId); esperaLargadaId = null; }
-}
-
-let painelAutoRefreshId = null;
-function pararPainelAutoRefresh(){
-  if(painelAutoRefreshId){ clearInterval(painelAutoRefreshId); painelAutoRefreshId = null; }
-}
-
-/* ---------------- JOGO ---------------- */
-let jogoGrupo = null;
-let jogoMembros = [];
-let jogoApresentadorIdx = 0;
-let jogoTally = {}; // nome -> {acertos, erros}
-let jogoMarcacaoAtual = {}; // nome ouvinte -> 'acerto'|'erro'|null
-let cronometroId = null;
-let cronometroRestante = TEMPO_APRESENTACAO;
-
-function pararCronometro(){
-  if(cronometroId){ clearInterval(cronometroId); cronometroId = null; }
-}
-
-async function iniciarJogo(){
-  const nInput = document.getElementById('jogarGrupoNum').value;
-  const erroEl = document.getElementById('jogarSelecionarErro');
-  erroEl.innerHTML = '';
-  if(!nInput){ erroEl.innerHTML = '<div class="aviso">Informe o número do grupo.</div>'; return; }
-  if(!grupoNumValido(nInput)){
-    erroEl.innerHTML = '<div class="aviso">O número do grupo deve ser de 1 a ' + MAX_GRUPOS + '.</div>';
-    return;
-  }
-  const n = parseInt(nInput, 10);
-  erroEl.innerHTML = '<div class="spinner"></div>';
-  try{
-    const estado = await lerEstadoJogo();
-    if(!estado.iniciado){
-      // Ainda não houve a largada geral: espera e verifica de novo periodicamente.
-      erroEl.innerHTML = '<div class="aviso">🏁 Aguardando a largada do administrador. Assim que ela for dada, a corrida começa automaticamente aqui.</div>';
-      pararEsperaLargada();
-      esperaLargadaId = setInterval(async ()=>{
-        const est2 = await lerEstadoJogo();
-        if(est2.iniciado){
-          pararEsperaLargada();
-          erroEl.innerHTML = '';
-          await carregarECarregarJogo(n, erroEl);
+/* ----------------------------------------------------------------------
+   6) JOGADOR — cadastro e reconexão
+   ---------------------------------------------------------------------- */
+function restaurarJogadorLocal() {
+  const id = localStorage.getItem("gpq_jogador_id");
+  const nome = localStorage.getItem("gpq_jogador_nome");
+  if (id && nome) {
+    jogadorAtual = { id, nome, pontos_total: 0 };
+    // confirma no banco em segundo plano (pode ter sido apagado num "reiniciar jogo do zero")
+    sb.from("jogadores").select("id,nome,pontos_total").eq("id", id).maybeSingle()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          // jogador não existe mais no banco — limpa e deixa a pessoa entrar de novo
+          localStorage.removeItem("gpq_jogador_id");
+          localStorage.removeItem("gpq_jogador_nome");
+          jogadorAtual = null;
+          return;
         }
-      }, 4000);
-      return;
-    }
-    await carregarECarregarJogo(n, erroEl);
-  }catch(e){
-    erroEl.innerHTML = '<div class="aviso">Erro ao verificar a largada. Tente novamente.</div>';
-  }
-}
-
-async function carregarECarregarJogo(n, erroEl){
-  try{
-    const r = await storage.get('grupo:' + n + ':membros');
-    if(!r || !r.value){
-      erroEl.innerHTML = '<div class="aviso">Esse grupo ainda não foi cadastrado. Volte à etapa 1.</div>';
-      return;
-    }
-    jogoMembros = JSON.parse(r.value);
-    if(jogoMembros.length < 2){
-      erroEl.innerHTML = '<div class="aviso">Esse grupo precisa de pelo menos 2 pessoas cadastradas.</div>';
-      return;
-    }
-    jogoGrupo = n;
-    jogoApresentadorIdx = 0;
-    jogoTally = {};
-    jogoMembros.forEach(m => jogoTally[m] = {acertos:0, erros:0});
-    erroEl.innerHTML = '';
-    irPara('jogo');
-    renderApresentador();
-  }catch(e){
-    erroEl.innerHTML = '<div class="aviso">Erro ao carregar o grupo. Tente novamente.</div>';
-  }
-}
-
-function renderApresentador(){
-  const total = jogoMembros.length;
-  const apresentador = jogoMembros[jogoApresentadorIdx];
-  document.getElementById('jogoProgressoTxt').textContent = 'Apresentador ' + (jogoApresentadorIdx+1) + ' de ' + total;
-  document.getElementById('jogoGrupoTxt').textContent = 'Grupo ' + jogoGrupo;
-  document.getElementById('jogoBarra').style.width = ((jogoApresentadorIdx)/total*100)+'%';
-  document.getElementById('jogoApresentador').textContent = apresentador;
-
-  const ouvintes = jogoMembros.filter(m => m !== apresentador);
-  jogoMarcacaoAtual = {};
-  ouvintes.forEach(o => jogoMarcacaoAtual[o] = null);
-
-  const wrap = document.getElementById('jogoOuvintes');
-  wrap.innerHTML = '';
-  ouvintes.forEach(nome=>{
-    const div = document.createElement('div');
-    div.className = 'ouvinte';
-    const safeId = nome.replace(/[^a-zA-Z0-9]/g,'_');
-    div.innerHTML = `
-      <div class="nome">${escaparHtml(nome)}</div>
-      <div class="par-botoes">
-        <button class="toggle acerto" id="ac_${safeId}" onclick="marcar('${nome.replace(/'/g,"\\'")}','acerto')">✓ Acertou</button>
-        <button class="toggle erro" id="er_${safeId}" onclick="marcar('${nome.replace(/'/g,"\\'")}','erro')">✕ Errou</button>
-      </div>
-    `;
-    wrap.appendChild(div);
-  });
-  atualizarBotaoProximo();
-  iniciarCronometro();
-  jogoAvancando = false;
-}
-
-function iniciarCronometro(){
-  pararCronometro();
-  cronometroRestante = TEMPO_APRESENTACAO;
-  atualizarCronometroTexto();
-  cronometroId = setInterval(()=>{
-    cronometroRestante--;
-    atualizarCronometroTexto();
-    if(cronometroRestante <= 0){
-      pararCronometro();
-      proximoApresentador();
-    }
-  }, 1000);
-}
-
-function atualizarCronometroTexto(){
-  const el = document.getElementById('jogoCronometro');
-  if(!el) return;
-  const restante = Math.max(cronometroRestante,0);
-  const min = Math.floor(restante / 60);
-  const seg = restante % 60;
-  el.textContent = '⏱️ ' + min + ':' + seg.toString().padStart(2,'0');
-  el.classList.toggle('cronometro-alerta', cronometroRestante <= 10);
-}
-
-function marcar(nome, tipo){
-  jogoMarcacaoAtual[nome] = tipo;
-  const safeId = nome.replace(/[^a-zA-Z0-9]/g,'_');
-  document.getElementById('ac_'+safeId).classList.toggle('on', tipo==='acerto');
-  document.getElementById('er_'+safeId).classList.toggle('on', tipo==='erro');
-  atualizarBotaoProximo();
-}
-
-function atualizarBotaoProximo(){
-  const btn = document.getElementById('btnProximoApresentador');
-  // O cronômetro já força o avanço automático; o botão fica liberado pra quem terminar antes do tempo.
-  btn.disabled = false;
-  const ultimo = jogoApresentadorIdx === jogoMembros.length - 1;
-  btn.textContent = ultimo ? 'Finalizar grupo' : 'Próximo apresentador ⏭️';
-}
-
-let jogoAvancando = false; // trava para o clique manual e o disparo automático do cronômetro não avançarem 2x
-async function proximoApresentador(){
-  if(jogoAvancando) return;
-  jogoAvancando = true;
-  pararCronometro();
-  Object.entries(jogoMarcacaoAtual).forEach(([nome, tipo])=>{
-    if(tipo === 'acerto') jogoTally[nome].acertos++;
-    else if(tipo === 'erro') jogoTally[nome].erros++;
-  });
-
-  if(jogoApresentadorIdx === jogoMembros.length - 1){
-    await finalizarGrupo();
-    jogoAvancando = false;
-  } else {
-    jogoApresentadorIdx++;
-    renderApresentador(); // renderApresentador libera jogoAvancando de novo
-  }
-}
-
-async function finalizarGrupo(){
-  document.getElementById('jogoOuvintes').innerHTML = '<div class="spinner"></div>';
-  const resultado = {
-    grupo: jogoGrupo,
-    porPessoa: jogoTally,
-    finalizado: true,
-    ts: Date.now()
-  };
-  try{
-    await storage.set('grupo:' + jogoGrupo + ':resultado', JSON.stringify(resultado));
-  }catch(e){
-    // Não pode falhar em silêncio: sem isso o grupo acha que terminou, mas o resultado
-    // nunca chega ao painel geral. Mantemos na mesma tela e deixamos tentar de novo.
-    document.getElementById('jogoOuvintes').innerHTML = `
-      <div class="aviso">⚠️ Não consegui salvar o resultado final do Grupo ${jogoGrupo}. Verifique a internet e toque em "Tentar salvar de novo" antes de sair dessa tela — se sair agora, o resultado deste grupo pode não aparecer no pódio.</div>
-      <button class="btn" onclick="finalizarGrupo()">🔁 Tentar salvar de novo</button>
-    `;
-    document.getElementById('btnProximoApresentador').style.display = 'none';
-    return;
-  }
-  mostrarResultadoNaTela(resultado);
-  irPara('resultado-grupo');
-}
-
-/* ---------------- RESULTADO DE UM GRUPO ---------------- */
-async function verResultadoGrupo(){
-  const nInput = document.getElementById('resGrupoNum').value;
-  const erroEl = document.getElementById('resSelecionarErro');
-  if(!nInput){ erroEl.innerHTML = '<div class="aviso">Informe o número do grupo.</div>'; return; }
-  if(!grupoNumValido(nInput)){
-    erroEl.innerHTML = '<div class="aviso">O número do grupo deve ser de 1 a ' + MAX_GRUPOS + '.</div>';
-    return;
-  }
-  const n = parseInt(nInput, 10);
-  erroEl.innerHTML = '<div class="spinner"></div>';
-  try{
-    const r = await storage.get('grupo:' + n + ':resultado');
-    if(!r || !r.value){
-      erroEl.innerHTML = '<div class="aviso">Esse grupo ainda não finalizou a dinâmica.</div>';
-      return;
-    }
-    erroEl.innerHTML = '';
-    const resultado = JSON.parse(r.value);
-    mostrarResultadoNaTela(resultado);
-    irPara('resultado-grupo');
-  }catch(e){
-    erroEl.innerHTML = '<div class="aviso">Grupo não encontrado.</div>';
-  }
-}
-
-function mostrarResultadoNaTela(resultado){
-  const pessoas = Object.entries(resultado.porPessoa).map(([nome, v])=>{
-    const total = v.acertos + v.erros;
-    const pct = total > 0 ? Math.round((v.acertos/total)*100) : 0;
-    return {nome, acertos:v.acertos, erros:v.erros, pct};
-  });
-  // Ranking por pessoa dentro do grupo: por % de acerto (todo mundo do mesmo grupo
-  // ouve o mesmo número de apresentações, então % e total de acertos dão no mesmo —
-  // mas usamos % para manter o mesmo critério do pódio individual global).
-  pessoas.sort((a,b)=> b.pct - a.pct || b.acertos - a.acertos);
-
-  const ranksGrupo = agruparPorEmpate(pessoas).slice(0,3);
-  const pessoasComPosicao = comPosicoes(pessoas);
-
-  let html = `
-    <div class="secao-titulo">🏆 Pódio de pilotos · Grupo ${resultado.grupo}</div>
-    ${renderPodioQuadriculado(ranksGrupo)}
-    <div class="secao-titulo">Classificação completa · Grupo ${resultado.grupo}</div>
-  `;
-  pessoasComPosicao.forEach((p)=>{
-    html += `
-      <div class="ranking-item">
-        <div class="pos">${p.posicao}º</div>
-        <div class="info">
-          <strong>${escaparHtml(p.nome)}</strong>
-          <span>${p.acertos} acertos · ${p.erros} erros</span>
-        </div>
-        <div class="pill ${p.pct>=50?'verde':'vermelho'}">${p.pct}%</div>
-      </div>
-    `;
-  });
-  document.getElementById('resGrupoConteudo').innerHTML = html;
-}
-
-/* ---------------- EMPATE: agrupa uma lista já ordenada por % em "degraus" ----------------
-   Pessoas/grupos com a mesma % ficam no mesmo degrau e sobem juntas no pódio —
-   assim ninguém fica de fora só por causa da ordem de leitura dos dados. */
-function agruparPorEmpate(listaOrdenadaPorPct){
-  const degraus = [];
-  listaOrdenadaPorPct.forEach(item=>{
-    const ultimo = degraus[degraus.length-1];
-    if(ultimo && ultimo[0].pct === item.pct){
-      ultimo.push(item);
-    } else {
-      degraus.push([item]);
-    }
-  });
-  return degraus;
-}
-
-/* ---------------- POSIÇÃO: numera uma lista ordenada por % respeitando empates ----------------
-   Ranking padrão de corrida: quem empata divide a mesma posição (ex: 1º, 1º, 3º) em
-   vez de ser separado arbitrariamente em 1º/2º só pela ordem de leitura dos dados. */
-function comPosicoes(listaOrdenadaPorPct){
-  let posicaoAtual = 0;
-  let pctAnterior = null;
-  return listaOrdenadaPorPct.map((item, idx)=>{
-    if(pctAnterior === null || item.pct !== pctAnterior){
-      posicaoAtual = idx + 1;
-      pctAnterior = item.pct;
-    }
-    return Object.assign({}, item, { posicao: posicaoAtual });
-  });
-}
-
-/* ---------------- BANDEIRA QUADRICULADA / PÓDIO (TOP 3 DEGRAUS, COM EMPATES) ----------------
-   Recebe até 3 "degraus" (arrays de pessoas empatadas na mesma %), do 1º ao 3º lugar.
-   Se houver empate, todas as pessoas daquela % aparecem juntas na mesma coluna. */
-function renderPodioQuadriculado(degraus){
-  if(!degraus || degraus.length === 0){
-    return '<div class="vazio">Ainda sem dados suficientes para o pódio.</div>';
-  }
-  const grupo1 = degraus[0] || null;
-  const grupo2 = degraus[1] || null;
-  const grupo3 = degraus[2] || null;
-
-  const coluna = (pessoas, posicao, classe) => {
-    if(!pessoas || pessoas.length===0) return '<div class="podio-coluna ' + classe + '"><div class="podio-degrau ' + classe + '"></div></div>';
-    const medalha = posicao===1 ? '🥇' : posicao===2 ? '🥈' : '🥉';
-    const pct = pessoas[0].pct;
-    // Empate: em vez de empilhar um <div> por nome (o que estourava a altura da coluna
-    // quando muita gente empatava), os nomes viram "chips" numa faixa com rolagem
-    // horizontal — a coluna nunca cresce verticalmente, só o conteúdo rola de lado.
-    const nomesHtml = pessoas.length > 1
-      ? `<div class="podio-nomes-scroll">${pessoas.map(p => `<span class="podio-chip">${escaparHtml(p.nome)}</span>`).join('')}</div>`
-      : `<div class="podio-nome">${escaparHtml(pessoas[0].nome)}</div>`;
-    return `
-      <div class="podio-coluna ${classe}">
-        <div class="podio-medalha">${medalha}</div>
-        ${nomesHtml}
-        <div class="podio-valor">${pct}% de acerto${pessoas.length>1 ? ' · '+pessoas.length+' empatados' : ''}</div>
-        <div class="podio-degrau ${classe}">${posicao}º</div>
-      </div>
-    `;
-  };
-
-  return `
-    <div class="podio-quadriculado">
-      <div class="podio-bandeira topo"></div>
-      <div class="podio-colunas">
-        ${coluna(grupo2, 2, 'segundo')}
-        ${coluna(grupo1, 1, 'primeiro')}
-        ${coluna(grupo3, 3, 'terceiro')}
-      </div>
-      <div class="podio-bandeira base"></div>
-    </div>
-  `;
-}
-
-/* ---------------- PAINEL GERAL ---------------- */
-// Chamado a cada 30s pelo auto-refresh: atualiza os dados do painel sem reiniciar a
-// navegação nem piscar um spinner cheio de tela (importante pra quando o painel está
-// projetado no telão sem ninguém tocando em nada).
-async function atualizarPainelSilencioso(){
-  if(!document.getElementById('tela-painel').classList.contains('ativo')) return;
-  await abrirPainel(true);
-}
-
-async function abrirPainel(_silencioso){
-  if(!_silencioso){
-    irPara('painel'); // já limpa qualquer auto-refresh anterior
-    pararPainelAutoRefresh();
-    painelAutoRefreshId = setInterval(atualizarPainelSilencioso, 30000);
-  }
-  const conteudo = document.getElementById('painelConteudo');
-  if(!_silencioso) conteudo.innerHTML = '<div class="spinner"></div>';
-  try{
-    const lista = await storage.list('grupo:');
-    const chaves = (lista && lista.keys) ? lista.keys : [];
-    const chavesResultado = chaves.filter(k => k.endsWith(':resultado'));
-
-    if(chavesResultado.length === 0){
-      conteudo.innerHTML = '<div class="vazio">Nenhum grupo finalizou a dinâmica ainda.<br>Assim que os grupos terminarem, os resultados aparecem aqui.</div>';
-      return;
-    }
-
-    const resultados = [];
-    for(const chave of chavesResultado){
-      try{
-        const r = await storage.get(chave);
-        if(r && r.value) resultados.push(JSON.parse(r.value));
-      }catch(e){}
-    }
-
-    // Agregação por grupo: ranking final por % de acerto do grupo.
-    // Usamos % (não total bruto de acertos) porque grupos com mais gente geram mais
-    // rodadas de pergunta/resposta — comparar por total absoluto favoreceria sempre
-    // o grupo maior. % divide pelo total de rodadas de cada grupo, então fica justo
-    // tanto para grupos pequenos quanto grandes.
-    const grupos = resultados.map(res=>{
-      let acertos=0, erros=0;
-      Object.values(res.porPessoa).forEach(v=>{ acertos+=v.acertos; erros+=v.erros; });
-      const total = acertos+erros;
-      const pct = total>0 ? Math.round((acertos/total)*100) : 0;
-      return {grupo: res.grupo, pct};
-    });
-    grupos.sort((a,b)=> b.pct - a.pct || a.grupo - b.grupo);
-    const gruposComPosicao = comPosicoes(grupos);
-
-    // Agregação por pessoa (global, entre todos os grupos), por % de acerto.
-    // Também usamos % aqui pelo mesmo motivo: quem está num grupo de 10 ouve 9
-    // apresentações, quem está num grupo de 2 ouve só 1 — comparar total bruto
-    // penalizaria quem está em grupo pequeno. % normaliza essa diferença.
-    const pessoas = [];
-    resultados.forEach(res=>{
-      Object.entries(res.porPessoa).forEach(([nome, v])=>{
-        const total = v.acertos+v.erros;
-        const pct = total>0 ? Math.round((v.acertos/total)*100) : 0;
-        pessoas.push({nome, grupo: res.grupo, acertos:v.acertos, erros:v.erros, pct});
+        jogadorAtual = data;
+        document.getElementById("lobbyNome").textContent = data.nome;
       });
-    });
-    pessoas.sort((a,b)=> b.pct - a.pct || a.nome.localeCompare(b.nome));
-    // Pódio individual: pega os 3 primeiros DEGRAUS de %, não as 3 primeiras pessoas —
-    // se houver empate, todo mundo daquela % sobe junto no mesmo degrau.
-    const ranksIndividual = agruparPorEmpate(pessoas).slice(0,3);
-
-    let html = '';
-
-    html += `
-      <div class="secao-titulo">🏆 Pódio individual </div>
-      ${renderPodioQuadriculado(ranksIndividual)}
-      <div class="secao-titulo">🏁 Classificação geral de grupos por % de acerto (${grupos.length} finalizados)</div>
-    `;
-    gruposComPosicao.forEach((g)=>{
-      const medalha = g.posicao===1 ? '🥇' : g.posicao===2 ? '🥈' : g.posicao===3 ? '🥉' : g.posicao+'º';
-      html += `
-        <div class="ranking-item">
-          <div class="pos">${medalha}</div>
-          <div class="info">
-            <strong>Grupo ${g.grupo}</strong>
-          </div>
-          <div class="pill ${g.pct>=50?'verde':'vermelho'}">${g.pct}%</div>
-        </div>
-      `;
-    });
-
-    conteudo.innerHTML = html;
-  }catch(e){
-    conteudo.innerHTML = '<div class="aviso">Erro ao carregar o painel. Toque em atualizar para tentar novamente.</div>';
   }
 }
 
-inicializarCadastro();
-atualizarBotaoAdminFloat();
+async function entrarComoJogador() {
+  const input = document.getElementById("nomeJogador");
+  const nome = (input.value || "").trim();
+  const statusEl = document.getElementById("entrarStatus");
+  statusEl.textContent = "";
+
+  if (nome.length < 2) {
+    statusEl.textContent = "Digite seu nome completo.";
+    return;
+  }
+  if (!PERGUNTAS.length) {
+    statusEl.textContent = "O quiz ainda não foi configurado (perguntas ausentes).";
+    return;
+  }
+
+  try {
+    const { data, error } = await sb.from("jogadores").insert({ nome }).select("id,nome,pontos_total").single();
+    if (error) throw error;
+    jogadorAtual = data;
+    localStorage.setItem("gpq_jogador_id", data.id);
+    localStorage.setItem("gpq_jogador_nome", data.nome);
+    document.getElementById("lobbyNome").textContent = data.nome;
+    irPara("lobby");
+    buscarEstadoRemoto(true); // sincroniza caso a corrida já tenha começado
+  } catch (e) {
+    console.error(e);
+    statusEl.textContent = "Não deu para entrar agora. Verifique sua internet e tente de novo.";
+  }
+}
+
+function verificarEstadoAgora() {
+  mostrarToast("Verificando...");
+  buscarEstadoRemoto(true);
+}
+
+/* ----------------------------------------------------------------------
+   7) TIMER — usado tanto na tela do piloto quanto no telão
+   ---------------------------------------------------------------------- */
+function iniciarTimerVisual(barraEl, txtEl, aoZerar) {
+  if (timerHandle) clearInterval(timerHandle);
+  function tick() {
+    const passado = Date.now() - horaInicioPerguntaMs;
+    const restanteMs = Math.max(0, TEMPO_PERGUNTA_MS - passado);
+    const pct = Math.max(0, Math.min(100, (restanteMs / TEMPO_PERGUNTA_MS) * 100));
+    if (barraEl) {
+      barraEl.style.width = pct + "%";
+      barraEl.style.background =
+        pct > 55 ? "var(--bandeira-verde)" : pct > 25 ? "var(--bandeira-amarela)" : "var(--bandeira-vermelha)";
+    }
+    if (txtEl) txtEl.textContent = Math.ceil(restanteMs / 1000) + "s";
+    if (restanteMs <= 0) {
+      clearInterval(timerHandle);
+      if (aoZerar) aoZerar();
+    }
+  }
+  tick();
+  timerHandle = setInterval(tick, 250);
+}
+
+/* ----------------------------------------------------------------------
+   8) TELA DO PILOTO — pergunta e resposta
+   ---------------------------------------------------------------------- */
+function renderPerguntaJogador() {
+  const p = PERGUNTAS[perguntaIndexAtual - 1];
+  if (!p || !jogadorAtual) return;
+
+  const jaRespondeu = jaRespondeuNumero === perguntaIndexAtual;
+
+  document.getElementById("pgProgressoTxt").textContent =
+    "Pergunta " + perguntaIndexAtual + " de " + PERGUNTAS.length;
+  const elPerguntaTxt = document.getElementById("pgPerguntaTexto");
+  if (elPerguntaTxt) elPerguntaTxt.textContent = p.pergunta;
+  document.getElementById("pgAvisoRespondido").style.display = jaRespondeu ? "block" : "none";
+
+  const container = document.getElementById("pgOpcoes");
+  container.innerHTML = "";
+  p.opcoes.forEach((texto, i) => {
+    const btn = document.createElement("button");
+    btn.className = "opcao-btn cor-" + i;
+    if (jaRespondeu && respostaLocalAtual && respostaLocalAtual.pergunta === perguntaIndexAtual && respostaLocalAtual.opcaoIndex === i) {
+      btn.classList.add("selecionada");
+    }
+    btn.disabled = jaRespondeu;
+    btn.innerHTML =
+      '<span class="letra">' + LETRAS[i] + "</span><span class=\"opcao-texto\">" + escaparHtml(texto) + "</span>";
+    btn.onclick = () => responder(i);
+    container.appendChild(btn);
+  });
+
+  irPara("pergunta");
+  // ao cronômetro chegar a zero, o piloto vê imediatamente se pontuou ou
+  // errou — não precisa mais esperar o administrador revelar
+  iniciarTimerVisual(
+    document.getElementById("pgBarraTempo"),
+    document.getElementById("pgTempoTxt"),
+    () => {
+      if (jaRespondeuNumero !== perguntaIndexAtual) responder(-1);
+      if (respostaLocalAtual && respostaLocalAtual.pergunta === perguntaIndexAtual) {
+        mostrarFeedback(respostaLocalAtual.opcaoIndex, respostaLocalAtual.acertou, respostaLocalAtual.pontosGanhos);
+      }
+    }
+  );
+}
+
+async function responder(opcaoIndex) {
+  if (jaRespondeuNumero === perguntaIndexAtual) return; // trava local contra duplo toque
+  jaRespondeuNumero = perguntaIndexAtual;
+
+  document.querySelectorAll("#pgOpcoes .opcao-btn").forEach((b, i) => {
+    b.disabled = true;
+    if (i === opcaoIndex) b.classList.add("selecionada");
+  });
+  document.getElementById("pgAvisoRespondido").style.display = "block";
+
+  const p = PERGUNTAS[perguntaIndexAtual - 1];
+  const tempoMs = Math.min(Math.max(Date.now() - horaInicioPerguntaMs, 0), TEMPO_PERGUNTA_MS);
+  const acertou = opcaoIndex >= 0 && opcaoIndex === p.correta;
+  const pontosGanhos = calcularPontos(acertou, tempoMs);
+
+  // guarda o resultado localmente, mas só mostra na tela quando o admin
+  // clicar em "revelar resultado" — é isso que sincroniza todo mundo vendo
+  // o próprio resultado junto, na hora certa
+  respostaLocalAtual = { pergunta: perguntaIndexAtual, opcaoIndex, acertou, pontosGanhos };
+
+  const novoTotal = (jogadorAtual.pontos_total || 0) + pontosGanhos;
+  jogadorAtual.pontos_total = novoTotal;
+
+  enviarRespostaComRetentativa({
+    jogador_id: jogadorAtual.id,
+    pergunta_id: perguntaIndexAtual,
+    opcao_escolhida: opcaoIndex,
+    correta: acertou,
+    tempo_resposta_ms: tempoMs,
+    pontos_ganhos: pontosGanhos,
+  }, novoTotal);
+}
+
+function calcularPontos(acertou, tempoMs) {
+  if (!acertou) return 0;
+  const fracaoRestante = 1 - tempoMs / TEMPO_PERGUNTA_MS;
+  return Math.round(PONTOS_MIN_ACERTO + (PONTOS_MAX - PONTOS_MIN_ACERTO) * fracaoRestante);
+}
+
+async function enviarRespostaComRetentativa(payload, novoTotal, tentativa = 1) {
+  try {
+    const { error } = await sb.from("respostas").insert(payload);
+    if (error && error.code !== "23505") throw error; // 23505 = já respondeu (ok, ignora)
+    await sb.from("jogadores").update({ pontos_total: novoTotal }).eq("id", jogadorAtual.id);
+  } catch (e) {
+    console.error("Falha ao enviar resposta, tentativa " + tentativa, e);
+    if (tentativa < 3) {
+      setTimeout(() => enviarRespostaComRetentativa(payload, novoTotal, tentativa + 1), 900 * tentativa);
+    } else {
+      mostrarToast("⚠️ Sua resposta pode não ter sido salva. Verifique a internet.", "erro");
+    }
+  }
+}
+
+function mostrarFeedback(opcaoIndex, acertou, pontosGanhos) {
+  document.getElementById("fbIcone").textContent = opcaoIndex < 0 ? "⏱️" : acertou ? "✅" : "❌";
+  document.getElementById("fbTitulo").textContent =
+    opcaoIndex < 0 ? "Tempo esgotado!" : acertou ? "Você acertou!" : "Resposta errada";
+  document.getElementById("fbPontos").textContent = "+" + formatarPontos(pontosGanhos) + " pontos";
+  document.getElementById("fbPontosTotal").textContent = formatarPontos(jogadorAtual.pontos_total);
+  irPara("feedback");
+}
+
+/* ----------------------------------------------------------------------
+   9) REALTIME — broadcast (empurra na hora) + polling (auto-cura)
+   ---------------------------------------------------------------------- */
+function conectarRealtime() {
+  canal = sb.channel(NOME_CANAL_REALTIME, { config: { broadcast: { self: false } } });
+  canal.on("broadcast", { event: "estado" }, ({ payload }) => aplicarEstado(payload, false));
+  canal.subscribe((status) => {
+    const pill = document.getElementById("adminConexao");
+    if (!pill) return;
+    if (status === "SUBSCRIBED") {
+      pill.textContent = "🟢 conectado";
+      pill.className = "pill pill-ok";
+    } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      pill.textContent = "🔴 reconectando...";
+      pill.className = "pill pill-erro";
+      setTimeout(conectarRealtime, 2000);
+    }
+  });
+}
+
+async function buscarEstadoRemoto(forcar) {
+  try {
+    const { data, error } = await sb.from("jogo_estado").select("*").eq("id", 1).maybeSingle();
+    if (error || !data) return;
+    aplicarEstado(data, forcar);
+  } catch (e) {
+    console.error("Falha ao buscar estado remoto:", e);
+  }
+}
+
+async function escreverEstado(campos) {
+  const registro = { id: 1, atualizado_em: new Date().toISOString(), ...campos };
+  try {
+    await sb.from("jogo_estado").upsert(registro);
+  } catch (e) {
+    console.error("Falha ao gravar estado:", e);
+    mostrarToast("⚠️ Falha ao salvar o estado da corrida. Tente novamente.", "erro");
+    return;
+  }
+  canal.send({ type: "broadcast", event: "estado", payload: registro });
+  aplicarEstado(registro, true); // aplica localmente também (quem manda também precisa ver)
+}
+
+/* ----------------------------------------------------------------------
+   10) MÁQUINA DE ESTADOS — o coração do sincronismo entre telas
+   ---------------------------------------------------------------------- */
+function aplicarEstado(estado, forcar) {
+  if (!estado || !estado.fase) return;
+  if (!forcar && estadoAplicadoEm && estado.atualizado_em && estado.atualizado_em <= estadoAplicadoEm) return;
+  estadoAplicadoEm = estado.atualizado_em || estadoAplicadoEm;
+
+  faseAtual = estado.fase;
+  perguntaIndexAtual = estado.pergunta_atual || 0;
+  horaInicioPerguntaMs = estado.iniciado_em ? new Date(estado.iniciado_em).getTime() : null;
+
+  atualizarTelaAdminSeAberta(estado);
+  atualizarTelaPainelSeAberta(estado);
+  atualizarTelaJogadorSeAplicavel(estado);
+}
+
+function atualizarTelaJogadorSeAplicavel(estado) {
+  if (!jogadorAtual) return; // esta aba é só o telão / ainda não é jogador
+  const telaAtiva = document.body.dataset.tela;
+  // não mexe se a pessoa estiver no admin ou ainda não entrou
+  if (telaAtiva === "admin" || telaAtiva === "home" || telaAtiva === "entrar") return;
+
+  if (estado.fase === "lobby") {
+    if (telaAtiva !== "lobby") irPara("lobby");
+    document.getElementById("lobbyMensagem").textContent = "Aguardando o administrador dar a largada da corrida...";
+  } else if (estado.fase === "pergunta") {
+    renderPerguntaJogador();
+  } else if (estado.fase === "revelacao" || estado.fase === "ranking") {
+    if (jaRespondeuNumero !== perguntaIndexAtual) {
+      // não respondeu a tempo (perdeu o próprio timer local) — fecha a pergunta como errada
+      responder(-1);
+    }
+    // só agora, quando o admin revela o resultado, é que o piloto vê quantos
+    // pontos ganhou — antes disso ele só sabia que a resposta foi enviada
+    if (respostaLocalAtual && respostaLocalAtual.pergunta === perguntaIndexAtual && telaAtiva !== "feedback") {
+      mostrarFeedback(respostaLocalAtual.opcaoIndex, respostaLocalAtual.acertou, respostaLocalAtual.pontosGanhos);
+    }
+    document.querySelector("#tela-feedback .fb-aguardando").textContent =
+      estado.fase === "ranking" ? "Veja o ranking parcial no telão! 🏆" : "Veja o resultado no telão! 📊";
+  } else if (estado.fase === "fim") {
+    finalizarTelaJogador();
+  }
+}
+
+async function finalizarTelaJogador() {
+  try {
+    const { data } = await sb.from("jogadores").select("pontos_total").eq("id", jogadorAtual.id).maybeSingle();
+    if (data) jogadorAtual.pontos_total = data.pontos_total;
+  } catch (e) { /* usa o valor local mesmo se a busca falhar */ }
+  document.getElementById("fimPontosJogador").textContent = formatarPontos(jogadorAtual.pontos_total);
+  irPara("fim-jogador");
+}
+
+/* ----------------------------------------------------------------------
+   11) PAINEL PÚBLICO (telão)
+   ---------------------------------------------------------------------- */
+function tentarTelaCheiaHorizontal() {
+  // em notebook ligado a projetor isso não muda nada (já é horizontal);
+  // em tablet/celular usado como telão, força tela cheia deitada — falha
+  // silenciosamente onde o navegador não suportar, sem travar o app
+  const raiz = document.documentElement;
+  if (raiz.requestFullscreen) {
+    raiz.requestFullscreen().then(() => {
+      if (screen.orientation && screen.orientation.lock) {
+        screen.orientation.lock("landscape").catch(() => {});
+      }
+    }).catch(() => {});
+  }
+}
+
+function atualizarTelaPainelSeAberta(estado) {
+  if (!isAdmin) return;
+  const el = document.getElementById("painelConteudo");
+  const rodape = document.getElementById("painelRodape");
+
+  // rodapé de contadores só faz sentido durante a corrida (pergunta/revelação/
+  // ranking) — na largada e no pódio já tem outras informações na tela
+  // (guardado com "if (rodape)" pra nunca travar o resto do desenho do
+  // telão caso esse elemento não exista por algum HTML desatualizado)
+  if (rodape) {
+    const mostrarRodape = estado.fase === "pergunta" || estado.fase === "revelacao" || estado.fase === "ranking";
+    rodape.style.display = mostrarRodape ? "flex" : "none";
+    if (mostrarRodape) atualizarRodapePainel();
+  }
+
+  if (estado.fase === "lobby") {
+    painelUltimaPerguntaRenderizada = 0;
+    el.innerHTML =
+      '<div class="painel-lobby">' +
+      '<div class="semaforo espera" id="painelSemaforo"><span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span></div>' +
+      "<h2>Aguardando a largada 🏁</h2>" +
+      '<p id="painelContagem">Pilotos na grid: ' + (estado.total_jogadores ?? "—") + "</p></div>";
+  } else if (estado.fase === "pergunta") {
+    const novaPergunta = perguntaIndexAtual !== painelUltimaPerguntaRenderizada;
+    painelUltimaPerguntaRenderizada = perguntaIndexAtual;
+    if (novaPergunta) {
+      tocarLargadaEDepois(() => renderPerguntaPainel());
+    } else {
+      renderPerguntaPainel();
+    }
+  } else if (estado.fase === "revelacao") {
+    renderRevelacaoPainel(estado);
+  } else if (estado.fase === "ranking") {
+    renderRankingPainel(estado.ranking || []);
+  } else if (estado.fase === "fim") {
+    renderPodioPainel(estado.ranking || []);
+  }
+}
+
+async function atualizarRodapePainel() {
+  try {
+    const { count: totalJogadores } = await sb.from("jogadores").select("id", { count: "exact", head: true });
+    const elJogadores = document.getElementById("painelRodapeJogadores");
+    if (elJogadores) elJogadores.textContent = totalJogadores ?? "—";
+
+    const elRespostas = document.getElementById("painelRodapeRespostas");
+    if (elRespostas) {
+      if (perguntaIndexAtual > 0) {
+        const { count: totalRespostas } = await sb
+          .from("respostas").select("id", { count: "exact", head: true }).eq("pergunta_id", perguntaIndexAtual);
+        elRespostas.textContent = totalRespostas ?? "0";
+      } else {
+        elRespostas.textContent = "0";
+      }
+    }
+  } catch (e) {
+    console.error("Falha ao atualizar rodapé do painel:", e);
+  }
+}
+
+function tocarLargadaEDepois(callback) {
+  const el = document.getElementById("painelConteudo");
+  el.innerHTML =
+    '<div class="painel-lobby"><div class="semaforo" id="largadaSemaforo">' +
+    "<span class=\"luz\"></span><span class=\"luz\"></span><span class=\"luz\"></span><span class=\"luz\"></span><span class=\"luz\"></span>" +
+    "</div></div>";
+  const semaforo = document.getElementById("largadaSemaforo");
+  const luzes = semaforo.querySelectorAll(".luz");
+  luzes.forEach((luz, i) => setTimeout(() => luz.classList.add("acesa"), i * 380));
+  setTimeout(() => {
+    semaforo.classList.add("apagou");
+    setTimeout(callback, 450);
+  }, luzes.length * 380 + 500);
+}
+
+function renderPerguntaPainel() {
+  const p = PERGUNTAS[perguntaIndexAtual - 1];
+  if (!p) return;
+  const el = document.getElementById("painelConteudo");
+  el.innerHTML =
+    '<div class="painel-topo"><span>Pergunta ' + perguntaIndexAtual + " de " + PERGUNTAS.length + '</span><span id="painelTempoTxt">15s</span></div>' +
+    '<div class="painel-barra-wrap"><div id="painelBarra" class="painel-barra" style="width:100%"></div></div>' +
+    '<div class="painel-pergunta">' + escaparHtml(p.pergunta) + "</div>" +
+    '<div class="painel-opcoes">' +
+    p.opcoes.map((op, i) =>
+      '<div class="painel-opcao cor-' + i + '">' +
+      '<span class="letra">' + LETRAS[i] + "</span><span class=\"texto\">" + escaparHtml(op) + "</span>" +
+      "</div>"
+    ).join("") +
+    "</div>";
+  const perguntaNoDisparo = perguntaIndexAtual;
+  iniciarTimerVisual(document.getElementById("painelBarra"), document.getElementById("painelTempoTxt"), () => {
+    // só revela se ainda estivermos na mesma pergunta que zerou (evita
+    // disparo duplicado caso o admin já tenha revelado manualmente)
+    if (faseAtual === "pergunta" && perguntaIndexAtual === perguntaNoDisparo) revelarResultado();
+  });
+}
+
+function renderRevelacaoPainel(estado) {
+  const p = PERGUNTAS[perguntaIndexAtual - 1];
+  if (!p) return;
+  const el = document.getElementById("painelConteudo");
+  el.innerHTML =
+    '<div class="painel-topo"><span>Pergunta ' + perguntaIndexAtual + " de " + PERGUNTAS.length + '</span><span>📊 Resultado</span></div>' +
+    '<div class="painel-pergunta">' + escaparHtml(p.pergunta) + "</div>" +
+    '<div class="painel-opcoes">' +
+    p.opcoes.map((op, i) => {
+      const ehCorreta = i === p.correta;
+      return (
+        '<div class="painel-opcao cor-' + i + (ehCorreta ? " correta" : " errada") + '">' +
+        '<span class="letra">' + LETRAS[i] + "</span><span class=\"texto\">" + escaparHtml(op) + "</span>" +
+        (ehCorreta ? '<span class="correta-selo">✅ Resposta certa</span>' : "") +
+        "</div>"
+      );
+    }).join("") +
+    "</div>";
+}
+
+function renderRankingPainel(ranking) {
+  const el = document.getElementById("painelConteudo");
+  el.innerHTML =
+    '<div class="painel-ranking"><h2>🏆 Ranking parcial</h2>' +
+    ranking.map((j, i) =>
+      '<div class="rank-linha ' + (i === 0 ? "top1" : i === 1 ? "top2" : i === 2 ? "top3" : "") + '">' +
+      '<span class="pos">' + (i + 1) + "º</span><span class=\"nome\">" + escaparHtml(j.nome) + "</span>" +
+      '<span class="pts">' + formatarPontos(j.pontos_total) + "</span></div>"
+    ).join("") +
+    "</div>";
+}
+
+function renderPodioPainel(ranking) {
+  const top3 = ranking.slice(0, 3);
+  const resto = ranking.slice(3, 10);
+  const el = document.getElementById("painelConteudo");
+  const bloco = (pos, medalha, classe) => {
+    const j = top3[pos];
+    if (!j) return "";
+    return (
+      '<div class="podio-bloco ' + classe + '"><div class="medalha">' + medalha + "</div>" +
+      '<div class="nome">' + escaparHtml(j.nome) + "</div><div class=\"pts\">" + formatarPontos(j.pontos_total) + "</div></div>"
+    );
+  };
+  el.innerHTML =
+    '<div class="podio-wrap">' +
+    '<div class="faixa-quadriculada"></div>' +
+    "<h2>🏆 Pódio SPOD</h2><p class=\"podio-sub\">Corrida encerrada — parabéns aos pilotos!</p>" +
+    '<div class="podio-blocos">' +
+    bloco(1, "🥈", "podio-p2") + bloco(0, "🥇", "podio-p1") + bloco(2, "🥉", "podio-p3") +
+    "</div>" +
+    '<div class="podio-resto">' +
+    resto.map((j, i) =>
+      '<div class="rank-linha"><span class="pos">' + (i + 4) + "º</span><span class=\"nome\">" + escaparHtml(j.nome) + "</span>" +
+      '<span class="pts">' + formatarPontos(j.pontos_total) + "</span></div>"
+    ).join("") +
+    "</div>" +
+    '<div class="faixa-quadriculada" style="margin-top:28px;"></div>' +
+    "</div>";
+}
+
+function escaparHtml(txt) {
+  const d = document.createElement("div");
+  d.textContent = txt;
+  return d.innerHTML;
+}
+
+/* ----------------------------------------------------------------------
+   12) ADMIN — torre de comando da corrida
+   ---------------------------------------------------------------------- */
+function entrarAdmin() {
+  const senha = document.getElementById("senhaAdminInput").value;
+  const status = document.getElementById("adminLoginStatus");
+  if (senha !== SENHA_ADMIN) {
+    status.textContent = "Senha incorreta.";
+    return;
+  }
+  isAdmin = true;
+  document.getElementById("adminLogin").style.display = "none";
+  document.getElementById("adminPainel").style.display = "flex";
+  buscarEstadoRemoto(true);
+  atualizarContagemJogadores();
+  tentarTelaCheiaHorizontal();
+}
+
+function atualizarTelaAdminSeAberta(estado) {
+  if (!isAdmin) return;
+  document.getElementById("adminFaseAtual").textContent = "fase: " + estado.fase;
+  document.getElementById("adminPerguntaAtualTxt").textContent =
+    estado.fase === "lobby" || !estado.pergunta_atual
+      ? "corrida não iniciada"
+      : (perguntaIndexAtual + " de " + PERGUNTAS.length + " — " + (PERGUNTAS[perguntaIndexAtual - 1]?.pergunta || ""));
+
+  const ehUltimaPergunta = PERGUNTAS.length > 0 && perguntaIndexAtual >= PERGUNTAS.length;
+  const mostrar = (id, condicao) => (document.getElementById(id).style.display = condicao ? "block" : "none");
+  mostrar("btnIniciarCorrida", estado.fase === "lobby");
+  mostrar("btnProximaPergunta", (estado.fase === "revelacao" || estado.fase === "ranking") && !ehUltimaPergunta);
+  mostrar("btnEncerrarTempo", estado.fase === "pergunta");
+  mostrar("btnRevelar", estado.fase === "pergunta"); // revelação já é automática ao zerar; fica como opção manual
+  mostrar("btnRanking", (estado.fase === "revelacao" || estado.fase === "ranking") && !ehUltimaPergunta);
+  // ao final da corrida, nenhuma outra ação automática — só o botão de revelar o pódio
+  mostrar("btnEncerrarCorrida", (estado.fase === "revelacao" || estado.fase === "ranking") && ehUltimaPergunta);
+
+  if (estado.fase === "pergunta") atualizarContagemJogadores();
+}
+
+async function atualizarContagemJogadores() {
+  try {
+    const { count: totalJogadores } = await sb.from("jogadores").select("id", { count: "exact", head: true });
+    document.getElementById("adminTotalJogadores").textContent = totalJogadores ?? "—";
+
+    if (perguntaIndexAtual > 0) {
+      const { count: totalRespostas } = await sb
+        .from("respostas").select("id", { count: "exact", head: true }).eq("pergunta_id", perguntaIndexAtual);
+      document.getElementById("adminTotalRespostas").textContent = totalRespostas ?? "0";
+    } else {
+      document.getElementById("adminTotalRespostas").textContent = "0";
+    }
+
+    if (faseAtual === "lobby") {
+      // empurra a contagem para o telão também, sem precisar de um novo evento de fase
+      escreverEstado({ fase: "lobby", pergunta_atual: 0, total_jogadores: totalJogadores ?? 0 });
+    }
+  } catch (e) {
+    console.error("Falha ao atualizar contagem:", e);
+  }
+}
+
+function iniciarCorrida() {
+  if (!PERGUNTAS.length) {
+    mostrarToast("⚠️ Cadastre as perguntas no HTML antes de iniciar.", "erro");
+    return;
+  }
+  escreverEstado({ fase: "pergunta", pergunta_atual: 1, iniciado_em: new Date().toISOString() });
+}
+
+function abrirProximaPergunta() {
+  const proxima = perguntaIndexAtual + 1;
+  if (proxima > PERGUNTAS.length) {
+    encerrarCorrida();
+    return;
+  }
+  escreverEstado({ fase: "pergunta", pergunta_atual: proxima, iniciado_em: new Date().toISOString() });
+}
+
+function encerrarTempoAgora() {
+  // reaproveita a fase "pergunta" mas com início empurrado para o passado,
+  // assim todo mundo calcula o próprio cronômetro como já esgotado — sem precisar de fase nova
+  escreverEstado({
+    fase: "pergunta",
+    pergunta_atual: perguntaIndexAtual,
+    iniciado_em: new Date(Date.now() - TEMPO_PERGUNTA_MS - 1000).toISOString(),
+  });
+}
+
+async function revelarResultado() {
+  try {
+    const { data, error } = await sb
+      .from("respostas").select("opcao_escolhida").eq("pergunta_id", perguntaIndexAtual);
+    if (error) throw error;
+    const contagens = [0, 0, 0, 0];
+    (data || []).forEach((r) => { if (r.opcao_escolhida >= 0 && r.opcao_escolhida <= 3) contagens[r.opcao_escolhida]++; });
+    const total = (data || []).length;
+    escreverEstado({
+      fase: "revelacao",
+      pergunta_atual: perguntaIndexAtual,
+      contagens,
+      total_respostas: total,
+    });
+  } catch (e) {
+    console.error(e);
+    mostrarToast("⚠️ Falha ao calcular o resultado.", "erro");
+  }
+}
+
+async function buscarRankingTop(n) {
+  // busca todo mundo + todas as respostas, e desempata no cliente — isso garante
+  // que o pódio NUNCA mostra empate: 1) mais pontos, 2) mais rápido no total
+  // (soma do tempo de resposta em todas as perguntas), 3) id como desempate
+  // final determinístico (nunca falha, só existe pra garantir uma ordem única)
+  const [{ data: jogadores, error: erroJog }, { data: respostas, error: erroResp }] = await Promise.all([
+    sb.from("jogadores").select("id,nome,pontos_total"),
+    sb.from("respostas").select("jogador_id,tempo_resposta_ms"),
+  ]);
+  if (erroJog) { console.error(erroJog); return []; }
+
+  const tempoPorJogador = {};
+  (respostas || []).forEach((r) => {
+    tempoPorJogador[r.jogador_id] = (tempoPorJogador[r.jogador_id] || 0) + (r.tempo_resposta_ms || 0);
+  });
+  if (erroResp) console.error("Falha ao buscar tempos de resposta (desempate por pontos apenas):", erroResp);
+
+  const comTempo = (jogadores || []).map((j) => ({
+    ...j,
+    tempo_total: tempoPorJogador[j.id] || 0,
+  }));
+
+  comTempo.sort((a, b) => {
+    if (b.pontos_total !== a.pontos_total) return b.pontos_total - a.pontos_total;
+    if (a.tempo_total !== b.tempo_total) return a.tempo_total - b.tempo_total;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+
+  return comTempo.slice(0, n);
+}
+
+async function mostrarRankingParcial() {
+  const ranking = await buscarRankingTop(10);
+  escreverEstado({ fase: "ranking", pergunta_atual: perguntaIndexAtual, ranking });
+}
+
+async function encerrarCorrida() {
+  const ranking = await buscarRankingTop(10);
+  escreverEstado({ fase: "fim", pergunta_atual: perguntaIndexAtual, ranking });
+}
+
+function reiniciarJogo() {
+  if (!confirm("Isso volta a corrida para a largada (não apaga pilotos nem pontos). Confirma?")) return;
+  if (!confirm("Tem certeza mesmo? Todos os pilotos voltarão para a sala de espera.")) return;
+  escreverEstado({ fase: "lobby", pergunta_atual: 0, iniciado_em: null, contagens: null, ranking: null });
+}
