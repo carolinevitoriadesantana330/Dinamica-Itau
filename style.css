@@ -385,6 +385,18 @@ body[data-tela="admin"] #adminLogin{ max-width:380px; margin:8vh auto 0; }
 .btn-atualizar:hover{ color:var(--itau); border-color:var(--itau); }
 .btn-atualizar.girando{ animation:girarAtualizar .6s linear infinite; }
 .btn-atualizar:disabled{ cursor:wait; opacity:.7; }
+
+.painel-contagem-linha{ display:flex; align-items:center; justify-content:center; gap:12px; }
+.btn-atualizar-telao{
+  width:32px; height:32px; padding:0; border-radius:50%;
+  border:1px solid var(--linha); background:var(--bg); color:var(--tinta-mute);
+  font-size:16px; line-height:1; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:color .15s, border-color .15s;
+}
+.btn-atualizar-telao:hover{ color:var(--itau); border-color:var(--itau); }
+.btn-atualizar-telao.girando{ animation:girarAtualizar .6s linear infinite; }
+.btn-atualizar-telao:disabled{ cursor:wait; opacity:.7; }
 @keyframes girarAtualizar{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
 
 .admin-acoes{ display:flex; flex-direction:column; gap:10px; }
