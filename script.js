@@ -449,7 +449,8 @@ function atualizarTelaPainelSeAberta(estado) {
       '<div class="painel-lobby">' +
       '<div class="semaforo espera" id="painelSemaforo"><span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span><span class="luz"></span></div>' +
       "<h2>Aguardando a largada 🏁</h2>" +
-      '<p id="painelContagem">Pilotos na grid: ' + (estado.total_jogadores ?? "—") + "</p></div>";
+      '<div class="painel-contagem-linha"><p id="painelContagem">Pilotos na grid: ' + (estado.total_jogadores ?? "—") + '</p>' +
+      '<button class="btn-atualizar-telao" id="btnAtualizarTelao" onclick="atualizarPilotosManual()" title="Atualizar quantidade de pilotos" aria-label="Atualizar quantidade de pilotos">🔄</button></div></div>';
   } else if (estado.fase === "pergunta") {
     const novaPergunta = perguntaIndexAtual !== painelUltimaPerguntaRenderizada;
     painelUltimaPerguntaRenderizada = perguntaIndexAtual;
@@ -646,7 +647,9 @@ async function atualizarContagemJogadores() {
     }
 
     if (faseAtual === "lobby") {
-      // empurra a contagem para o telão também, sem precisar de um novo evento de fase
+      // atualiza o telão local na hora — o broadcast (self:false) não volta pra quem escreveu
+      const elContagem = document.getElementById("painelContagem");
+      if (elContagem) elContagem.textContent = "Pilotos na grid: " + (totalJogadores ?? "—");
       escreverEstado({ fase: "lobby", pergunta_atual: 0, total_jogadores: totalJogadores ?? 0 });
     }
   } catch (e) {
@@ -655,10 +658,10 @@ async function atualizarContagemJogadores() {
 }
 
 async function atualizarPilotosManual() {
-  const btn = document.getElementById("btnAtualizarPilotos");
-  if (btn) { btn.disabled = true; btn.classList.add("girando"); }
+  const btns = [document.getElementById("btnAtualizarPilotos"), document.getElementById("btnAtualizarTelao")].filter(Boolean);
+  btns.forEach((btn) => { btn.disabled = true; btn.classList.add("girando"); });
   await atualizarContagemJogadores();
-  if (btn) { btn.classList.remove("girando"); btn.disabled = false; }
+  btns.forEach((btn) => { btn.classList.remove("girando"); btn.disabled = false; });
 }
 
 function iniciarCorrida() {
